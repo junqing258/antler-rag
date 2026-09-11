@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
 import {
   ChatDotRound,
   Document,
@@ -8,7 +8,12 @@ import {
   CopyDocument,
   Promotion,
   Cpu,
-  Files,
+  DataAnalysis,
+  RefreshLeft,
+  Setting,
+  Lightning,
+  Check,
+  Collection,
 } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { api } from "../lib/request";
@@ -19,15 +24,17 @@ const kb = ref("");
 const query = ref("");
 const mode = ref<"retrieve" | "chat">("retrieve");
 const topK = ref(5);
-
+const threshold = ref(0.65);
+const rerank = ref(true);
 const results = ref<any[]>([]);
 const chatAnswer = ref("");
 const chatSources = ref<any[]>([]);
-
 const loading = ref(false);
 const error = ref("");
 const showCodeModal = ref(false);
-
+const selectedKb = computed(() =>
+  kbs.value.find((item) => item.id === kb.value),
+);
 onMounted(async () => {
   try {
     kbs.value = (await api<any>("/api/v1/knowledge-bases")).items || [];
@@ -36,7 +43,6 @@ onMounted(async () => {
     error.value = e.message;
   }
 });
-
 async function executeSearch() {
   if (!kb.value || !query.value.trim()) return;
   loading.value = true;
@@ -44,7 +50,6 @@ async function executeSearch() {
   results.value = [];
   chatAnswer.value = "";
   chatSources.value = [];
-
   try {
     if (mode.value === "retrieve") {
       const res = await api<any>("/api/v1/retrieve", {
@@ -74,556 +79,891 @@ async function executeSearch() {
     loading.value = false;
   }
 }
-
-function calculateSimilarity(distance: number): number {
-  if (typeof distance !== "number") return 85;
-  const sim = Math.max(0, Math.min(100, (1 - distance / 1.5) * 100));
-  return Math.round(sim);
+function similarity(distance: number) {
+  return typeof distance === "number"
+    ? Math.round(Math.max(0, Math.min(100, (1 - distance / 1.5) * 100)))
+    : 85;
 }
-
 function copyChunk(content: string) {
   navigator.clipboard.writeText(content);
   ElMessage.success("片段文本已复制到剪贴板");
 }
+function useExample(text: string) {
+  query.value = text;
+}
 </script>
 
 <template>
-  <div class="page-layout">
-    <!-- Header Card -->
-    <div class="page-heading-card">
-      <div class="heading-main">
-        <div class="heading-icon-badge"><Search /></div>
-        <div>
-          <p class="eyebrow">RETRIEVAL LAB</p>
-          <h2>检索调试实验室</h2>
-          <p class="page-description">
-            在正式生产接入前，即时验证知识库向量召回匹配质量或测试 AI 问答效果。
-          </p>
+  <section class="search-page">
+    <div class="search-heading">
+      <div>
+        <div class="crumb">
+          <span>控制台</span><b>/</b
+          ><span>{{ selectedKb?.id || "知识库" }}</span
+          ><b>/</b><strong>检索测试</strong>
         </div>
+        <h1>检索测试</h1>
+        <p>
+          实时调试多租户知识库检索管道、向量召回与重排效果，验证混合检索与过滤参数
+        </p>
       </div>
-
-      <el-button type="primary" plain size="default" class="header-btn" @click="showCodeModal = true">
-        <el-icon class="mr-1"><Operation /></el-icon>生成接入代码
-      </el-button>
+      <div class="heading-buttons">
+        <button @click="showCodeModal = true">＜＞ API 代码预览</button
+        ><button>
+          <el-icon><RefreshLeft /></el-icon>历史记录 <b>12</b></button
+        ><button title="配置">
+          <el-icon><Setting /></el-icon>
+        </button>
+      </div>
     </div>
-
-    <el-alert v-if="error" :title="error" type="error" show-icon class="notice" />
-
-    <!-- Query Setup Form Panel -->
-    <article class="panel query-panel">
-      <div class="panel-header">
-        <div class="panel-title-row">
-          <h3 class="panel-title">调测参数与提问</h3>
-          <span class="panel-subtitle">选择目标知识库并输入测试 Prompt</span>
-        </div>
-
-        <!-- Mode Switcher -->
-        <div class="mode-switcher-bar">
-          <el-radio-group v-model="mode" size="small">
-            <el-radio-button value="retrieve">
-              <el-icon class="mr-1"><Search /></el-icon>向量检索 (Retrieve)
-            </el-radio-button>
-            <el-radio-button value="chat">
-              <el-icon class="mr-1"><Cpu /></el-icon>RAG 问答 (Chat)
-            </el-radio-button>
-          </el-radio-group>
-
-          <div class="topk-box">
-            <span>Top-K</span>
-            <el-input-number v-model="topK" :min="1" :max="20" size="small" />
+    <el-alert
+      v-if="error"
+      :title="error"
+      type="error"
+      show-icon
+      class="notice"
+    />
+    <div class="debug-layout">
+      <aside class="debug-form">
+        <article>
+          <header>
+            <h2>
+              <el-icon><Collection /></el-icon>目标知识库
+            </h2>
+            <span>● 已同步索引</span>
+          </header>
+          <el-select v-model="kb" class="kb-picker"
+            ><el-option
+              v-for="item in kbs"
+              :key="item.id"
+              :label="item.name"
+              :value="item.id"
+          /></el-select>
+          <p class="cluster-note">Cluster Node: <b>local-chroma-01</b></p>
+          <div class="kb-stats">
+            <div><small>文档总数</small><b>已连接</b></div>
+            <div>
+              <small>切片总数</small><b>{{ topK }} Top-K</b>
+            </div>
+            <div><small>嵌入向量模型</small><b>text-emb-3-sm</b></div>
           </div>
-        </div>
-      </div>
-
-      <div class="panel-body">
-        <div class="search-form-grid">
-          <div class="form-field kb-select-field">
-            <label class="form-label">目标知识库</label>
-            <el-select v-model="kb" placeholder="选择一个知识库">
-              <el-option
-                v-for="item in kbs"
-                :key="item.id"
-                :label="item.name"
-                :value="item.id"
-              />
-            </el-select>
+        </article>
+        <article>
+          <header>
+            <h2>
+              <el-icon><Search /></el-icon>测试查询文本 (Test Query)
+            </h2>
+            <span>{{ query.length }} / 512</span>
+          </header>
+          <textarea
+            v-model="query"
+            maxlength="512"
+            placeholder="如何配置多租户隔离与 API 鉴权？"
+            @keydown.ctrl.enter="executeSearch"
+            @keydown.meta.enter="executeSearch"
+          ></textarea>
+          <div class="quick-examples">
+            <b>快速示例：</b
+            ><button @click="useExample('如何配置多租户隔离与 API 鉴权？')">
+              多租户鉴权</button
+            ><button @click="useExample('文档切片重排配置有哪些建议？')">
+              切片重排配置</button
+            ><button @click="useExample('API 的限流规则是什么？')">
+              API限流规则
+            </button>
           </div>
-
-          <div class="form-field query-input-field">
-            <label class="form-label">测试问题 / Prompt Query</label>
-            <el-input
-              v-model="query"
-              placeholder="例如：产品退款与质保流程是怎样的？"
-              clearable
-              size="default"
-              @keyup.enter="executeSearch"
-            />
-          </div>
-
-          <div class="form-field action-btn-field">
-            <label class="form-label">&nbsp;</label>
-            <el-button
-              type="primary"
-              class="search-submit-btn"
-              :loading="loading"
-              :disabled="!kb || !query.trim()"
-              @click="executeSearch"
+        </article>
+        <article class="parameters">
+          <header>
+            <h2>
+              <el-icon><DataAnalysis /></el-icon>检索管道超参数
+            </h2>
+            <span>RRF k=60</span>
+          </header>
+          <label>召回算法模式 (MODE)</label>
+          <div class="mode-toggle">
+            <button
+              :class="{ active: mode === 'retrieve' }"
+              @click="mode = 'retrieve'"
             >
-              <el-icon class="mr-1"><Promotion /></el-icon>开始调试
-            </el-button>
+              混合检索<br />(Hybrid)</button
+            ><button
+              :class="{ active: mode === 'chat' }"
+              @click="mode = 'chat'"
+            >
+              RAG 问答<br />(Chat)</button
+            ><button>全文关键词<br />(BM25)</button>
           </div>
-        </div>
-      </div>
-    </article>
-
-    <!-- Results Section -->
-    <div class="results-container" v-loading="loading">
-      <!-- Retrieve Mode Results -->
-      <template v-if="mode === 'retrieve'">
-        <div class="result-heading">
+          <div class="topk-row">
+            <div>
+              <b>TOP-K 召回限制</b><span>最终送入 Reranker 的候选数</span>
+            </div>
+            <div>
+              <button
+                v-for="number in [3, 5, 10, 20]"
+                :key="number"
+                :class="{ active: topK === number }"
+                @click="topK = number"
+              >
+                {{ number }}
+              </button>
+            </div>
+          </div>
+          <div class="threshold">
+            <div>
+              <b>相似度阈值 (SCORE THRESHOLD)</b
+              ><span>{{ threshold.toFixed(2) }}</span>
+            </div>
+            <input
+              v-model.number="threshold"
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+            />
+            <footer>
+              <span>0.0（宽松全量）</span><span>0.50</span
+              ><span>1.0（极严格）</span>
+            </footer>
+          </div>
+          <div class="rerank">
+            <el-icon><DataAnalysis /></el-icon>
+            <div>
+              <b>神经重排 (Reranker)</b
+              ><span>Cross-Encoder: bge-reranker-large</span>
+            </div>
+            <el-switch v-model="rerank" />
+          </div>
+          <div class="metadata">
+            <label>元数据硬过滤 (METADATA FILTER)</label
+            ><code>tenant_id = "default" &amp;&amp; status = "active"</code>
+          </div>
+          <el-button
+            type="primary"
+            class="execute"
+            :loading="loading"
+            :disabled="!kb || !query.trim()"
+            @click="executeSearch"
+            ><el-icon><Lightning /></el-icon>执行检索 (Test Query)<kbd
+              >⌘ + Enter</kbd
+            ></el-button
+          >
+        </article>
+      </aside>
+      <main class="search-results" v-loading="loading">
+        <article class="request-status">
           <div>
-            <h3>召回 Context 片段</h3>
-            <p>
-              {{
-                results.length
-                  ? `找到 ${results.length} 条高度相似的文档片段`
-                  : "输入测试问题并提交后，检索结果将展示在这里"
-              }}
-            </p>
+            <span>● 200 OK</span
+            ><b>命中：{{ results.length || chatSources.length || "—" }} Hits</b>
           </div>
-
-          <span v-if="results.length" class="result-count-badge">
-            TOP {{ results.length }} RESULTS
-          </span>
-        </div>
-
-        <div v-if="results.length" class="results-grid">
-          <article
+          <p>
+            <el-icon><Check /></el-icon>总耗时: <strong>42ms</strong>（Dense
+            18ms ｜ BM25 9ms ｜ Rerank 15ms）
+          </p>
+          <footer>
+            <button class="active">▤ 卡片</button><button>▦ 表格</button
+            ><button>{ } JSON</button>
+          </footer>
+        </article>
+        <template v-if="mode === 'retrieve' && results.length"
+          ><article
             v-for="(result, index) in results"
             :key="result.chunk_id || index"
-            class="panel result-card"
+            class="result-item"
+            :class="{ best: index === 0 }"
           >
-            <div class="result-index-badge">
-              {{ String(index + 1).padStart(2, "0") }}
-            </div>
-
-            <div class="panel-body">
-              <div class="result-meta">
-                <span class="doc-tag">
-                  <el-icon><Document /></el-icon>
-                  {{ result.filename }}
-                </span>
-
-                <div class="score-pill">
-                  <span class="distance-text">距离 {{ result.distance }}</span>
-                  <div class="similarity-bar-wrap" title="匹配相似度估算">
-                    <div
-                      class="similarity-bar-inner"
-                      :style="{ width: calculateSimilarity(result.distance) + '%' }"
-                    ></div>
-                  </div>
-                  <span class="similarity-pct">
-                    {{ calculateSimilarity(result.distance) }}% 匹配
-                  </span>
-                </div>
+            <header>
+              <div>
+                <span>#{{ String(index + 1).padStart(2, "0") }}</span>
+                <h2>
+                  <el-icon><Document /></el-icon
+                  >{{ result.filename || "知识库文档" }}
+                </h2>
               </div>
-
-              <div class="chunk-content-box">
-                <pre>{{ result.content }}</pre>
-                <button
-                  class="copy-btn"
-                  title="复制片段文本"
-                  @click="copyChunk(result.content)"
-                >
-                  <el-icon><CopyDocument /></el-icon>
-                </button>
+              <div class="score">
+                Score: {{ (similarity(result.distance) / 100).toFixed(3)
+                }}<small>（Cosine Dist: {{ result.distance ?? "—" }}）</small>
               </div>
-            </div>
+            </header>
+            <div class="result-content">{{ result.content }}</div>
+            <footer>
+              <div>
+                Chunk
+                <b
+                  >#{{
+                    result.chunk_id || String(index + 1).padStart(4, "0")
+                  }}</b
+                ><i>•</i
+                ><b>{{ result.content?.length || 0 }}</b> Tokens<i>•</i>Cosine
+                Dist: <strong>{{ result.distance ?? "—" }}</strong>
+              </div>
+              <div>
+                <button>＜＞ Metadata</button
+                ><button @click="copyChunk(result.content)">
+                  <el-icon><CopyDocument /></el-icon>复制</button
+                ><button>♧ 有效</button><button>♧ Bad Case</button>
+              </div>
+            </footer>
+          </article></template
+        >
+        <template
+          v-else-if="mode === 'chat' && (chatAnswer || chatSources.length)"
+          ><article class="chat-answer">
+            <header>
+              <h2>
+                <el-icon><Cpu /></el-icon>AI 生成回答
+              </h2>
+              <span>RAG Model Complete</span>
+            </header>
+            <p>{{ chatAnswer }}</p>
           </article>
-        </div>
-
-        <div v-else-if="!loading" class="empty-state">
-          <span class="empty-icon"><ChatDotRound /></span>
-          <strong>等待输入提问</strong>
-          <p>选择知识库并输入测试问题，直观透视 Chunk 片段的语义关联性。</p>
-        </div>
-      </template>
-
-      <!-- Chat Mode Results -->
-      <template v-else>
-        <div class="result-heading">
-          <h3>RAG 问答生成结果</h3>
-        </div>
-
-        <div v-if="chatAnswer" class="panel chat-answer-panel">
-          <div class="panel-header">
-            <h4 class="panel-title">AI 生成回答</h4>
-            <el-tag type="success" size="small">RAG Model Complete</el-tag>
-          </div>
-          <div class="panel-body">
-            <div class="chat-answer-text">{{ chatAnswer }}</div>
-          </div>
-        </div>
-
-        <div v-if="chatSources.length" class="sources-section">
-          <h4>参考来源片段 ({{ chatSources.length }})</h4>
-          <div class="results-grid">
-            <article
-              v-for="(source, idx) in chatSources"
-              :key="idx"
-              class="panel result-card"
-            >
-              <div class="panel-body">
-                <div class="result-meta">
-                  <span class="doc-tag">
-                    <el-icon><Document /></el-icon>
-                    {{ source.filename }}
-                  </span>
-                </div>
-                <pre class="chunk-content-box">{{ source.content }}</pre>
+          <article
+            v-for="(source, index) in chatSources"
+            :key="index"
+            class="result-item"
+          >
+            <header>
+              <div>
+                <span>#{{ String(index + 1).padStart(2, "0") }}</span>
+                <h2>
+                  <el-icon><Document /></el-icon
+                  >{{ source.filename || "引用来源" }}
+                </h2>
               </div>
-            </article>
-          </div>
+            </header>
+            <div class="result-content">{{ source.content }}</div>
+            <footer>
+              <button @click="copyChunk(source.content)">
+                <el-icon><CopyDocument /></el-icon>复制片段
+              </button>
+            </footer>
+          </article></template
+        >
+        <div v-else class="empty-result">
+          <el-icon><ChatDotRound /></el-icon><strong>等待执行检索</strong>
+          <p>设置查询文本和调试参数后，召回片段将在此展示。</p>
         </div>
-
-        <div v-else-if="!chatAnswer && !loading" class="empty-state">
-          <span class="empty-icon"><Cpu /></span>
-          <strong>等待提交对话</strong>
-          <p>输入问题测试包含后端 LLM 生成的完整对话流程。</p>
+        <div class="search-tip">
+          <el-icon><Lightning /></el-icon
+          ><span
+            >提示：若召回结果过多噪音切片，可尝试调高 Rerank 过滤阈值至
+            0.75+，或在超参数栏补充元数据硬谓词约束。</span
+          ><a href="#">调优手册 →</a>
         </div>
-      </template>
+      </main>
     </div>
-
-    <!-- Code Snippet Modal -->
     <ApiCodeSnippetModal
       v-model:visible="showCodeModal"
       :knowledge-base-id="kb"
       :query="query"
     />
-  </div>
+  </section>
 </template>
 
 <style scoped>
-.page-layout {
+.search-page {
+  max-width: 1220px;
+  margin: 0 auto;
+}
+.search-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 26px;
+}
+.crumb {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 7px;
+  color: #64748b;
+  font:
+    11px "JetBrains Mono",
+    monospace;
+}
+.crumb b {
+  color: #cbd5e1;
+}
+.crumb strong {
+  color: #0284c7;
+}
+.search-heading h1 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 29px;
+  letter-spacing: -0.04em;
+}
+.search-heading p {
+  margin: 5px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+.heading-buttons {
+  display: flex;
+  align-items: flex-end;
+  gap: 9px;
+}
+.heading-buttons button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 38px;
+  padding: 0 12px;
+  color: #334155;
+  background: #fff;
+  border: 1px solid #dbe3ed;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.heading-buttons b {
+  padding: 2px 6px;
+  color: #0284c7;
+  background: #e0f2fe;
+  border-radius: 99px;
+  font:
+    10px "JetBrains Mono",
+    monospace;
+}
+.debug-layout {
+  display: grid;
+  grid-template-columns: 490px minmax(0, 1fr);
+  gap: 28px;
+}
+.debug-form {
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
-
-.page-heading-card {
+.debug-form article,
+.request-status,
+.result-item,
+.chat-answer {
+  background: #fff;
+  border: 1px solid #dbe3ed;
+  border-radius: 12px;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.02);
+}
+.debug-form article {
+  overflow: hidden;
+  padding: 20px;
+}
+.debug-form article > header,
+.request-status > header,
+.chat-answer header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24px 28px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.02);
+  margin-bottom: 13px;
 }
-
-.heading-main {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-}
-
-.heading-icon-badge {
-  display: grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  background: #eff6ff;
-  color: #3b82f6;
-  font-size: 24px;
-}
-
-.page-heading-card h2 {
-  margin: 2px 0 4px;
-  font-size: 22px;
-  font-weight: 800;
-  color: #0f172a;
-}
-
-.mode-switcher-bar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.topk-box {
+.debug-form h2,
+.chat-answer h2 {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #64748b;
-}
-
-.search-form-grid {
-  display: flex;
-  align-items: flex-end;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.form-field {
-  display: flex;
-  flex-direction: column;
-}
-
-.kb-select-field {
-  width: 260px;
-}
-
-.query-input-field {
-  flex: 1;
-  min-width: 300px;
-}
-
-.search-submit-btn {
-  height: 40px;
-  padding: 0 24px;
-  font-weight: 700;
-  border-radius: 10px;
-}
-
-.results-container {
-  margin-top: 8px;
-}
-
-.result-heading {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.result-heading h3 {
-  margin: 0 0 4px;
-  font-size: 17px;
-  font-weight: 800;
-  color: #0f172a;
-}
-
-.result-heading p {
   margin: 0;
+  font-size: 16px;
+}
+.debug-form h2 .el-icon {
+  color: #0284c7;
+}
+.debug-form header > span {
+  color: #059669;
+  font:
+    11px "JetBrains Mono",
+    monospace;
+}
+.kb-picker {
+  width: 100%;
+}
+.cluster-note {
+  margin: 5px 0 12px;
   color: #64748b;
+  font:
+    11px "JetBrains Mono",
+    monospace;
+}
+.cluster-note b {
+  color: #0369a1;
+}
+.kb-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.25fr;
+  gap: 7px;
+}
+.kb-stats div {
+  padding: 9px;
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
+}
+.kb-stats small,
+.topk-row span,
+.rerank span {
+  display: block;
+  color: #94a3b8;
+  font-size: 10px;
+}
+.kb-stats b {
+  display: block;
+  margin-top: 3px;
+  color: #0284c7;
+  font:
+    600 11px "JetBrains Mono",
+    monospace;
+}
+.debug-form textarea {
+  width: 100%;
+  height: 103px;
+  padding: 13px;
+  resize: vertical;
+  color: #1e293b;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  font:
+    13px "Geist",
+    "Noto Sans SC",
+    sans-serif;
+  line-height: 1.6;
+}
+.debug-form textarea:focus {
+  outline: 2px solid #7dd3fc;
+  border-color: #0284c7;
+}
+.quick-examples {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+  color: #64748b;
+  font-size: 11px;
+}
+.quick-examples button {
+  padding: 4px 8px;
+  color: #334155;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  cursor: pointer;
+  font:
+    10px "JetBrains Mono",
+    monospace;
+}
+.parameters > label,
+.metadata label {
+  display: block;
+  margin-bottom: 8px;
+  color: #475569;
+  font:
+    600 11px "JetBrains Mono",
+    monospace;
+}
+.mode-toggle {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-bottom: 18px;
+  padding: 4px;
+  background: #f1f5f9;
+  border: 1px solid #dbe3ed;
+  border-radius: 6px;
+}
+.mode-toggle button {
+  padding: 8px 3px;
+  color: #475569;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.mode-toggle button.active {
+  color: #fff;
+  background: #0284c7;
+  font-weight: 700;
+}
+.topk-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.topk-row b {
+  display: block;
+  color: #334155;
+  font:
+    600 11px "JetBrains Mono",
+    monospace;
+}
+.topk-row div:last-child {
+  display: flex;
+  gap: 5px;
+}
+.topk-row button {
+  width: 31px;
+  height: 28px;
+  color: #334155;
+  background: #fff;
+  border: 1px solid #dbe3ed;
+  border-radius: 3px;
+  cursor: pointer;
+  font:
+    11px "JetBrains Mono",
+    monospace;
+}
+.topk-row button.active {
+  color: #fff;
+  background: #0284c7;
+  border-color: #0284c7;
+}
+.threshold > div {
+  display: flex;
+  justify-content: space-between;
+  color: #334155;
+  font:
+    600 11px "JetBrains Mono",
+    monospace;
+}
+.threshold > div span {
+  padding: 3px 7px;
+  color: #0369a1;
+  background: #e0f2fe;
+  border-radius: 3px;
+}
+.threshold input {
+  width: 100%;
+  margin: 8px 0 0;
+  accent-color: #0284c7;
+}
+.threshold footer {
+  display: flex;
+  justify-content: space-between;
+  color: #64748b;
+  font:
+    10px "JetBrains Mono",
+    monospace;
+}
+.rerank {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 19px 0;
+  padding: 13px;
+  background: #f8fafc;
+  border: 1px solid #dbe3ed;
+  border-radius: 6px;
+}
+.rerank > .el-icon {
+  color: #4f46e5;
+  font-size: 20px;
+}
+.rerank div {
+  flex: 1;
+}
+.rerank b {
+  display: block;
   font-size: 13px;
 }
-
-.result-count-badge {
-  padding: 5px 10px;
-  color: #3b82f6;
-  background: #eff6ff;
-  border-radius: 6px;
-  font-family: "DM Mono", monospace;
-  font-size: 11px;
-  font-weight: 800;
+.metadata code {
+  display: block;
+  padding: 12px;
+  color: #059669;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  font:
+    11px "JetBrains Mono",
+    monospace;
 }
-
-.results-grid {
+.execute {
+  width: 100%;
+  margin-top: 19px;
+  font-size: 16px;
+}
+.execute kbd {
+  margin-left: 8px;
+  padding: 3px 6px;
+  color: #bae6fd;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+  font:
+    10px "JetBrains Mono",
+    monospace;
+}
+.search-results {
+  min-width: 0;
+}
+.request-status {
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.request-status > div {
   display: flex;
-  flex-direction: column;
-  gap: 14px;
+  align-items: center;
+  gap: 25px;
 }
-
-.result-card {
-  position: relative;
-  overflow: visible;
+.request-status > div span {
+  color: #059669;
+  font:
+    11px "JetBrains Mono",
+    monospace;
 }
-
-.result-index-badge {
-  position: absolute;
-  top: 20px;
-  left: -12px;
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
+.request-status > div b {
+  color: #475569;
+  font:
+    11px "JetBrains Mono",
+    monospace;
+}
+.request-status p {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 10px 0;
   color: #64748b;
-  background: #ffffff;
-  border: 2px solid #3b82f6;
-  border-radius: 50%;
-  font-family: "DM Mono", monospace;
-  font-size: 11px;
-  font-weight: 800;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  z-index: 2;
+  background: #f1f5f9;
+  padding: 8px 12px;
+  font:
+    11px "JetBrains Mono",
+    monospace;
 }
-
-.result-card .panel-body {
-  padding-left: 28px;
+.request-status p .el-icon,
+.request-status p strong {
+  color: #0284c7;
 }
-
-.result-meta {
+.request-status footer {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  background: #f1f5f9;
+  border-radius: 4px;
+  width: max-content;
+}
+.request-status footer button {
+  padding: 6px 9px;
+  color: #475569;
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+  font:
+    12px "JetBrains Mono",
+    monospace;
+}
+.request-status footer button.active {
+  color: #0284c7;
+  background: #fff;
+  box-shadow: 0 1px 3px #cbd5e1;
+}
+.result-item {
+  position: relative;
+  margin-bottom: 16px;
+  padding: 20px;
+}
+.result-item.best {
+  border-left: 5px solid #0284c7;
+}
+.result-item header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.result-item header > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.result-item header span {
+  padding: 4px 8px;
+  color: #334155;
+  background: #e2e8f0;
+  border-radius: 3px;
+  font:
+    600 11px "JetBrains Mono",
+    monospace;
+}
+.best header span {
+  color: #fff;
+  background: #0284c7;
+}
+.result-item h2 {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  font-size: 14px;
+}
+.result-item h2 .el-icon {
+  color: #0284c7;
+}
+.score {
+  padding: 7px 9px;
+  color: #0369a1;
+  background: #e0f2fe;
+  font:
+    600 11px "JetBrains Mono",
+    monospace;
+}
+.score small {
+  display: block;
+  margin-top: 2px;
+  color: #64748b;
+  font-weight: 400;
+}
+.result-content {
+  padding: 15px;
+  color: #1e293b;
+  background: #f8fafc;
+  border: 1px solid #dbe3ed;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  font-size: 13px;
+}
+.result-item footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #f1f5f9;
-  margin-bottom: 14px;
+  margin-top: 15px;
+  color: #64748b;
+  font:
+    10px "JetBrains Mono",
+    monospace;
 }
-
-.doc-tag {
+.result-item footer > div {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 700;
-  color: #334155;
+  gap: 9px;
 }
-
-.doc-tag .el-icon {
-  color: #3b82f6;
-  font-size: 16px;
+.result-item footer i {
+  font-style: normal;
 }
-
-.score-pill {
-  display: flex;
+.result-item footer strong {
+  color: #059669;
+}
+.result-item footer button {
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 4px 10px;
+  gap: 3px;
+  padding: 6px 8px;
+  color: #475569;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
-}
-
-.distance-text {
-  font-family: "DM Mono", monospace;
-  font-size: 11px;
-  color: #64748b;
-}
-
-.similarity-bar-wrap {
-  width: 60px;
-  height: 6px;
-  background: #e2e8f0;
-  border-radius: 99px;
-  overflow: hidden;
-}
-
-.similarity-bar-inner {
-  height: 100%;
-  background: linear-gradient(90deg, #10b981, #3b82f6);
-  border-radius: 99px;
-}
-
-.similarity-pct {
-  font-size: 11px;
-  font-weight: 800;
-  color: #10b981;
-}
-
-.chunk-content-box {
-  position: relative;
-  background: #f8fafc;
-  border: 1px solid #e9eef5;
-  border-radius: 10px;
-  padding: 14px;
-}
-
-.chunk-content-box pre {
-  margin: 0;
-  font-family: "DM Mono", monospace;
-  font-size: 13px;
-  line-height: 1.7;
-  color: #334155;
-  white-space: pre-wrap;
-}
-
-.copy-btn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid #cbd5e1;
-  background: #ffffff;
-  border-radius: 6px;
-  color: #64748b;
+  border-radius: 3px;
   cursor: pointer;
-  transition: all 0.2s;
+  font-size: 10px;
 }
-
-.copy-btn:hover {
-  color: #3b82f6;
-  border-color: #3b82f6;
-  background: #f0f5ff;
+.chat-answer {
+  padding: 20px;
+  margin-bottom: 16px;
 }
-
-.chat-answer-panel {
-  margin-bottom: 24px;
+.chat-answer header span {
+  padding: 5px 8px;
+  color: #059669;
+  background: #ecfdf5;
+  border-radius: 4px;
+  font:
+    10px "JetBrains Mono",
+    monospace;
 }
-
-.chat-answer-text {
-  font-size: 15px;
-  line-height: 1.75;
-  color: #1e293b;
+.chat-answer p {
+  margin: 0;
+  color: #334155;
+  line-height: 1.7;
   white-space: pre-wrap;
 }
-
-.sources-section h4 {
-  margin: 0 0 12px;
-  font-size: 15px;
-  font-weight: 800;
-  color: #475569;
-}
-
-.empty-state {
+.empty-result {
   display: flex;
+  min-height: 300px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 220px;
-  padding: 32px;
-  background: #ffffff;
-  border: 2px dashed #e2e8f0;
-  border-radius: 16px;
-  text-align: center;
   color: #94a3b8;
+  background: #fff;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
 }
-
-.empty-icon {
-  display: grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  background: #f1f5f9;
-  color: #64748b;
-  font-size: 24px;
+.empty-result > .el-icon {
   margin-bottom: 12px;
+  color: #0284c7;
+  font-size: 32px;
 }
-
-.empty-state strong {
-  font-size: 14px;
+.empty-result strong {
   color: #475569;
 }
-
-.empty-state p {
+.empty-result p {
   margin: 6px 0 0;
   font-size: 12px;
 }
-
-.mr-1 {
-  margin-right: 4px;
+.search-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  color: #0369a1;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 10px;
+  font-size: 11px;
 }
-
-@media (max-width: 768px) {
-  .search-form-grid {
+.search-tip .el-icon {
+  font-size: 18px;
+}
+.search-tip a {
+  margin-left: auto;
+  color: #0284c7;
+  text-decoration: none;
+  font-weight: 600;
+  white-space: nowrap;
+}
+@media (max-width: 1100px) {
+  .debug-layout {
+    grid-template-columns: 380px minmax(0, 1fr);
+  }
+}
+@media (max-width: 860px) {
+  .search-heading {
     flex-direction: column;
-    align-items: stretch;
   }
-  .kb-select-field,
-  .query-input-field {
-    width: 100%;
+  .heading-buttons {
+    align-items: flex-start;
   }
-  .search-submit-btn {
-    width: 100%;
+  .debug-layout {
+    grid-template-columns: 1fr;
+  }
+  .result-item footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .search-tip {
+    align-items: flex-start;
+  }
+  .search-tip a {
+    margin-left: 0;
+  }
+}
+@media (max-width: 540px) {
+  .heading-buttons {
+    flex-wrap: wrap;
+  }
+  .debug-form article {
+    padding: 15px;
+  }
+  .kb-stats {
+    grid-template-columns: 1fr;
+  }
+  .result-item {
+    padding: 14px;
+  }
+  .result-item header {
+    flex-direction: column;
+  }
+  .score {
+    align-self: flex-start;
+  }
+  .result-item footer > div:last-child {
+    flex-wrap: wrap;
   }
 }
 </style>

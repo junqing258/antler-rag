@@ -13,8 +13,8 @@ import {
   OfficeBuilding,
   Expand,
   Fold,
-  ArrowRight,
-  Code,
+  Reading,
+  Operation,
 } from "@element-plus/icons-vue";
 import { api } from "../lib/request";
 import { authState, setTenant } from "../composables/useAuth";
@@ -25,26 +25,12 @@ const route = useRoute();
 const tenants = ref<any[]>([]);
 const isCollapsed = ref(false);
 const showCodeModal = ref(false);
-
 const isAdmin = computed(() => authState.user?.is_platform_admin);
-
-const activeTenantName = computed(() => {
-  const t = tenants.value.find((item) => item.id === authState.tenantId);
-  return t ? t.name : "选择租户";
-});
-
-const currentBreadcrumb = computed(() => {
-  const pathMap: Record<string, string> = {
-    "/": "工作区概览",
-    "/knowledge-bases": "知识库管理",
-    "/retrieve": "检索调试实验室",
-    "/members": "成员管理",
-    "/api-keys": "API Key 密钥",
-    "/tenants": "平台租户管理",
-  };
-  return pathMap[route.path] || "控制台";
-});
-
+const activeTenantName = computed(
+  () =>
+    tenants.value.find((item) => item.id === authState.tenantId)?.name ||
+    "选择租户",
+);
 onMounted(async () => {
   try {
     tenants.value = (await api<any>("/api/v1/auth/me/tenants")).items || [];
@@ -54,7 +40,6 @@ onMounted(async () => {
     router.push("/login");
   }
 });
-
 async function logout() {
   try {
     await api("/api/v1/auth/logout", { method: "POST" });
@@ -63,542 +48,481 @@ async function logout() {
     router.push("/login");
   }
 }
-
 function switchTenant(id: string) {
   setTenant(id);
   router.push("/");
 }
-
-function toggleSidebar() {
-  isCollapsed.value = !isCollapsed.value;
-}
 </script>
 
 <template>
-  <div class="app-layout">
-    <!-- Sidebar -->
-    <aside class="app-sidebar" :class="{ collapsed: isCollapsed }">
-      <div class="sidebar-header">
-        <router-link to="/" class="sidebar-brand">
-          <span class="brand-logo"><Connection /></span>
-          <div v-if="!isCollapsed" class="brand-info">
-            <span class="brand-title">Antler <span>RAG</span></span>
-            <span class="brand-badge">v0.1.0</span>
-          </div>
-        </router-link>
-
-        <button
-          v-if="!isCollapsed"
-          class="icon-btn collapse-btn"
-          title="折叠侧边栏"
-          @click="toggleSidebar"
-        >
+  <div class="console-layout">
+    <aside class="console-sidebar" :class="{ collapsed: isCollapsed }">
+      <div class="console-brand">
+        <span class="console-logo"><Connection /></span>
+        <div v-if="!isCollapsed">
+          <strong>Antler Knowledge</strong><span>V2.4.0-CLUSTER</span>
+        </div>
+        <button v-if="!isCollapsed" @click="isCollapsed = true">
           <el-icon><Fold /></el-icon>
         </button>
       </div>
-
-      <!-- Navigation Links -->
-      <nav class="sidebar-nav">
-        <div v-if="!isCollapsed" class="nav-section-title">核心工作区</div>
-        
-        <router-link to="/" class="nav-item" :class="{ active: route.path === '/' }">
-          <el-icon class="nav-icon"><DataBoard /></el-icon>
-          <span v-if="!isCollapsed" class="nav-label">工作区概览</span>
-        </router-link>
-
-        <router-link
-          to="/knowledge-bases"
-          class="nav-item"
-          :class="{ active: route.path === '/knowledge-bases' }"
+      <nav class="console-nav">
+        <p v-if="!isCollapsed">CONTROL PLANE</p>
+        <router-link to="/"
+          ><el-icon><DataBoard /></el-icon
+          ><span v-if="!isCollapsed">概览 (Overview)</span></router-link
+        ><router-link to="/knowledge-bases"
+          ><el-icon><Document /></el-icon
+          ><span v-if="!isCollapsed"
+            >知识库 (Knowledge Bases)</span
+          ></router-link
+        ><router-link to="/retrieve"
+          ><el-icon><Search /></el-icon
+          ><span v-if="!isCollapsed"
+            >检索测试 (Search Sandbox)</span
+          ></router-link
+        ><router-link to="/members"
+          ><el-icon><User /></el-icon
+          ><span v-if="!isCollapsed">成员管理 (Members)</span></router-link
+        ><router-link to="/api-keys"
+          ><el-icon><Key /></el-icon
+          ><span v-if="!isCollapsed">API Key</span></router-link
+        ><router-link v-if="isAdmin" to="/tenants"
+          ><el-icon><Setting /></el-icon
+          ><span v-if="!isCollapsed">租户管理 (Tenants)</span></router-link
         >
-          <el-icon class="nav-icon"><Document /></el-icon>
-          <span v-if="!isCollapsed" class="nav-label">知识库管理</span>
-        </router-link>
-
-        <router-link
-          to="/retrieve"
-          class="nav-item"
-          :class="{ active: route.path === '/retrieve' }"
-        >
-          <el-icon class="nav-icon"><Search /></el-icon>
-          <span v-if="!isCollapsed" class="nav-label">检索调试实验室</span>
-        </router-link>
-
-        <div v-if="authState.user && !isCollapsed" class="nav-section-title">
-          系统管理
-        </div>
-
-        <router-link
-          v-if="authState.user"
-          to="/members"
-          class="nav-item"
-          :class="{ active: route.path === '/members' }"
-        >
-          <el-icon class="nav-icon"><User /></el-icon>
-          <span v-if="!isCollapsed" class="nav-label">成员管理</span>
-        </router-link>
-
-        <router-link
-          v-if="authState.user"
-          to="/api-keys"
-          class="nav-item"
-          :class="{ active: route.path === '/api-keys' }"
-        >
-          <el-icon class="nav-icon"><Key /></el-icon>
-          <span v-if="!isCollapsed" class="nav-label">API Key 密钥</span>
-        </router-link>
-
-        <router-link
-          v-if="isAdmin"
-          to="/tenants"
-          class="nav-item"
-          :class="{ active: route.path === '/tenants' }"
-        >
-          <el-icon class="nav-icon"><Setting /></el-icon>
-          <span v-if="!isCollapsed" class="nav-label">租户管理</span>
-        </router-link>
       </nav>
-
-      <!-- Sidebar Footer -->
-      <div class="sidebar-footer">
-        <div class="status-indicator">
-          <span class="status-dot"></span>
-          <span v-if="!isCollapsed" class="status-text">SQLite & Chroma 运行中</span>
-        </div>
+      <div class="engine-status" v-if="!isCollapsed">
+        <div><span></span><b>RRF Engine</b><em>ONLINE</em></div>
+        <section>
+          <small>TELEMETRY</small><strong>99.98% uptime</strong><i>14ms p99</i>
+        </section>
       </div>
     </aside>
-
-    <!-- Main Container -->
-    <div class="app-main-wrapper">
-      <!-- Topbar Header -->
-      <header class="app-topbar">
-        <div class="topbar-left">
+    <div class="console-main">
+      <header class="console-topbar">
+        <div class="topbar-context">
           <button
             v-if="isCollapsed"
-            class="icon-btn expand-btn"
-            title="展开侧边栏"
-            @click="toggleSidebar"
+            class="expand"
+            @click="isCollapsed = false"
           >
             <el-icon><Expand /></el-icon>
           </button>
-
-          <div class="breadcrumb-bar">
-            <span class="crumb-root">Antler</span>
-            <el-icon class="crumb-sep"><ArrowRight /></el-icon>
-            <span class="crumb-current">{{ currentBreadcrumb }}</span>
-          </div>
-        </div>
-
-        <div class="topbar-right">
-          <!-- Quick Code Modal Toggle -->
-          <el-button
-            size="small"
-            class="quick-code-btn"
-            @click="showCodeModal = true"
-          >
-            <el-icon class="mr-1"><Code /></el-icon>API 代码
-          </el-button>
-
-          <!-- Tenant Switcher Dropdown -->
-          <div class="tenant-selector-wrapper">
-            <el-icon class="tenant-icon"><OfficeBuilding /></el-icon>
-            <el-select
-              v-model="authState.tenantId"
-              placeholder="选择租户"
-              size="default"
-              class="tenant-select"
+          <div class="tenant-picker">
+            <el-icon><OfficeBuilding /></el-icon
+            ><el-select
+              :model-value="authState.tenantId"
+              :placeholder="activeTenantName"
               @change="switchTenant"
-            >
-              <el-option
+              ><el-option
                 v-for="tenant in tenants"
                 :key="tenant.id"
                 :label="tenant.name"
                 :value="tenant.id"
-              />
-            </el-select>
+            /></el-select>
           </div>
-
-          <!-- User Profile & Logout -->
-          <div class="user-profile">
-            <div class="avatar-box">
-              {{ authState.user?.email?.slice(0, 1).toUpperCase() }}
+          <div class="kb-context">
+            <el-icon><Document /></el-icon
+            ><span>{{
+              route.path === "/retrieve"
+                ? "检索调试"
+                : route.path === "/knowledge-bases"
+                  ? "知识库管理"
+                  : "Antler Console"
+            }}</span>
+          </div>
+          <div class="cluster-health">
+            <i></i><span>Qdrant-Node-01</span><b>Healthy</b>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <a href="#"
+            ><el-icon><Reading /></el-icon> Docs</a
+          ><button class="api-ready" @click="showCodeModal = true">
+            <b>API</b> v1 Ready
+          </button>
+          <div class="user-identity">
+            <div>
+              <strong>{{ isAdmin ? "Admin User" : "Tenant User" }}</strong
+              ><span>{{ authState.user?.email }}</span>
             </div>
-
-            <div class="user-meta">
-              <span class="user-email">{{ authState.user?.email }}</span>
-              <span class="user-role">
-                {{ isAdmin ? "Platform Admin" : "Tenant Member" }}
-              </span>
-            </div>
-
-            <button class="logout-btn" title="退出登录" @click="logout">
+            <i>{{ authState.user?.email?.slice(0, 1).toUpperCase() }}</i
+            ><button title="退出登录" @click="logout">
               <el-icon><SwitchButton /></el-icon>
             </button>
           </div>
         </div>
       </header>
-
-      <!-- Main Body View -->
-      <main class="app-content">
-        <div class="content-container">
-          <router-view />
-        </div>
-      </main>
+      <main class="console-content"><router-view /></main>
     </div>
-
-    <!-- API Snippet Modal -->
     <ApiCodeSnippetModal v-model:visible="showCodeModal" />
   </div>
 </template>
 
 <style scoped>
-.app-layout {
+.console-layout {
   display: flex;
   min-height: 100vh;
-  width: 100vw;
-  background: #f8fafc;
   color: #0f172a;
+  background: #f8fafc;
 }
-
-/* Sidebar Styling (Modern Dark Slate theme) */
-.app-sidebar {
+.console-sidebar {
+  position: sticky;
+  top: 0;
   display: flex;
   flex-direction: column;
-  width: 250px;
-  background: #0f172a;
-  color: #f8fafc;
-  flex-shrink: 0;
-  transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 20;
+  width: 304px;
+  height: 100vh;
+  flex: 0 0 auto;
+  background: #fff;
+  border-right: 1px solid #e2e8f0;
+  transition: width 0.2s;
 }
-
-.app-sidebar.collapsed {
-  width: 72px;
+.console-sidebar.collapsed {
+  width: 68px;
 }
-
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 64px;
-  padding: 0 18px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.sidebar-brand {
+.console-brand {
   display: flex;
   align-items: center;
   gap: 12px;
-  text-decoration: none;
-  color: #ffffff;
+  height: 76px;
+  padding: 0 20px;
+  border-bottom: 1px solid #f1f5f9;
 }
-
-.brand-logo {
+.console-logo {
   display: grid;
-  place-items: center;
   width: 36px;
   height: 36px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
-  color: #ffffff;
-  font-size: 20px;
-  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
+  flex: 0 0 36px;
+  place-items: center;
+  color: #fff;
+  background: #0284c7;
+  border-radius: 8px;
+  font-size: 21px;
 }
-
-.brand-info {
+.console-brand div {
   display: flex;
+  min-width: 0;
   flex-direction: column;
 }
-
-.brand-title {
-  font-size: 16px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: #ffffff;
+.console-brand strong {
+  white-space: nowrap;
+  font-size: 15px;
 }
-
-.brand-title span {
-  color: #60a5fa;
-}
-
-.brand-badge {
-  font-family: "DM Mono", monospace;
-  font-size: 10px;
+.console-brand div span,
+.console-nav p {
   color: #94a3b8;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
 }
-
-.icon-btn {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
+.console-brand button {
+  margin-left: auto;
+  border: 0;
   background: transparent;
-  border: none;
-  border-radius: 8px;
   color: #94a3b8;
   cursor: pointer;
-  transition: all 0.2s;
 }
-
-.icon-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #ffffff;
-}
-
-.sidebar-nav {
+.console-nav {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 4px;
-  padding: 18px 12px;
-  flex: 1;
+  padding: 19px 14px;
 }
-
-.nav-section-title {
-  margin: 16px 10px 6px;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  color: #64748b;
-  text-transform: uppercase;
+.console-nav p {
+  margin: 2px 10px 10px;
+  font-weight: 600;
 }
-
-.nav-item {
+.console-nav a {
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 42px;
-  padding: 0 12px;
-  border-radius: 10px;
-  color: #94a3b8;
-  font-size: 13px;
-  font-weight: 700;
+  gap: 14px;
+  min-height: 42px;
+  padding: 0 13px;
+  color: #475569;
+  border: 1px solid transparent;
+  border-radius: 8px;
   text-decoration: none;
-  transition: all 0.2s ease;
+  font-size: 13px;
+  font-weight: 500;
 }
-
-.nav-icon {
+.console-nav a .el-icon {
+  color: #94a3b8;
   font-size: 18px;
-  color: #64748b;
-  transition: color 0.2s;
 }
-
-.nav-item:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.07);
+.console-nav a:hover {
+  background: #f8fafc;
 }
-
-.nav-item:hover .nav-icon {
-  color: #60a5fa;
+.console-nav a.router-link-exact-active {
+  color: #0369a1;
+  background: #f0f9ff;
+  border-color: #e0f2fe;
+  font-weight: 700;
 }
-
-.nav-item.active {
-  color: #ffffff;
-  background: var(--brand, #3b82f6);
-  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);
+.console-nav a.router-link-exact-active .el-icon {
+  color: #0284c7;
 }
-
-.nav-item.active .nav-icon {
-  color: #ffffff;
+.collapsed .console-nav {
+  padding: 19px 10px;
 }
-
-.app-sidebar.collapsed .nav-item {
+.collapsed .console-nav a {
   justify-content: center;
   padding: 0;
 }
-
-.sidebar-footer {
-  padding: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+.engine-status {
+  margin: 14px;
+  padding: 13px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
 }
-
-.status-indicator {
+.engine-status > div {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  color: #94a3b8;
-  font-weight: 600;
+  gap: 7px;
+  font:
+    11px "JetBrains Mono",
+    monospace;
+  color: #475569;
 }
-
-.status-dot {
+.engine-status > div span,
+.cluster-health i {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: #10b981;
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
-  animation: pulseGlow 2s infinite;
 }
-
-/* Main Layout Wrapper */
-.app-main-wrapper {
+.engine-status em {
+  margin-left: auto;
+  color: #059669;
+  font-style: normal;
+}
+.engine-status section {
+  position: relative;
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-width: 0;
+  margin-top: 12px;
+  padding: 9px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
 }
-
-/* Topbar Header */
-.app-topbar {
+.engine-status small {
+  color: #94a3b8;
+  font:
+    10px "JetBrains Mono",
+    monospace;
+}
+.engine-status strong {
+  color: #0284c7;
+  font:
+    600 12px "JetBrains Mono",
+    monospace;
+}
+.engine-status section i {
+  position: absolute;
+  right: 9px;
+  bottom: 10px;
+  color: #64748b;
+  font:
+    11px "JetBrains Mono",
+    monospace;
+  font-style: normal;
+}
+.console-main {
+  min-width: 0;
+  flex: 1;
+}
+.console-topbar {
   position: sticky;
   top: 0;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 64px;
-  padding: 0 28px;
-  background: rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  height: 76px;
+  padding: 0 32px;
+  background: rgba(255, 255, 255, 0.96);
   border-bottom: 1px solid #e2e8f0;
-  z-index: 10;
 }
-
-.topbar-left {
+.topbar-context,
+.topbar-actions,
+.user-identity,
+.tenant-picker,
+.kb-context,
+.cluster-health {
   display: flex;
   align-items: center;
-  gap: 16px;
 }
-
-.breadcrumb-bar {
-  display: flex;
-  align-items: center;
+.topbar-context {
+  gap: 14px;
+}
+.tenant-picker,
+.kb-context {
   gap: 8px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.crumb-root {
-  color: #64748b;
-}
-
-.crumb-sep {
-  font-size: 12px;
-  color: #cbd5e1;
-}
-
-.crumb-current {
-  color: #0f172a;
-}
-
-.topbar-right {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-}
-
-.quick-code-btn {
-  font-weight: 700;
+  height: 38px;
+  padding: 0 11px;
+  color: #1e293b;
+  background: #f8fafc;
+  border: 1px solid #dbe3ed;
   border-radius: 8px;
+  font-size: 13px;
 }
-
-.tenant-selector-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 2px 10px;
-  background: #f1f5f9;
-  border-radius: 10px;
-  border: 1px solid #e2e8f0;
+.tenant-picker > .el-icon,
+.kb-context > .el-icon {
+  color: #0284c7;
 }
-
-.tenant-icon {
-  font-size: 16px;
-  color: #3b82f6;
-}
-
-.tenant-select {
-  width: 180px;
-}
-
-.tenant-select :deep(.el-select__wrapper) {
+.tenant-picker :deep(.el-select__wrapper) {
+  min-height: 32px !important;
+  padding: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
-  min-height: 32px !important;
 }
-
-.user-profile {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-left: 12px;
-  border-left: 1px solid #e2e8f0;
+.tenant-picker :deep(.el-select) {
+  width: 145px;
 }
-
-.avatar-box {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: #3b82f6;
-  color: #ffffff;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.user-meta {
-  display: flex;
-  flex-direction: column;
-}
-
-.user-email {
+.kb-context {
+  font-family: "JetBrains Mono", monospace;
   font-size: 12px;
-  font-weight: 700;
-  color: #0f172a;
-  line-height: 1.2;
 }
-
-.user-role {
-  font-size: 10px;
-  color: #64748b;
+.cluster-health {
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  color: #047857;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 7px;
+  font:
+    11px "JetBrains Mono",
+    monospace;
+}
+.cluster-health b {
   font-weight: 600;
 }
-
-.logout-btn {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border: none;
-  background: transparent;
-  color: #94a3b8;
-  border-radius: 8px;
+.topbar-actions {
+  gap: 20px;
+}
+.topbar-actions > a {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #475569;
+  text-decoration: none;
+  font-size: 13px;
+}
+.api-ready {
+  padding: 6px 10px;
+  color: #334155;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font:
+    11px "JetBrains Mono",
+    monospace;
   cursor: pointer;
-  transition: all 0.2s;
 }
-
-.logout-btn:hover {
-  background: #fee2e2;
-  color: #ef4444;
+.api-ready b {
+  color: #0284c7;
 }
-
-/* Main Content Area */
-.app-content {
-  flex: 1;
-  padding: 28px 36px;
-  overflow-y: auto;
+.user-identity {
+  gap: 10px;
+  padding-left: 14px;
+  border-left: 1px solid #e2e8f0;
 }
-
-.content-container {
-  max-width: 1320px;
-  margin: 0 auto;
+.user-identity div {
+  display: flex;
+  flex-direction: column;
+  text-align: right;
 }
-
-.mr-1 {
-  margin-right: 4px;
+.user-identity strong {
+  font-size: 13px;
 }
-
-@media (max-width: 850px) {
-  .user-meta,
-  .crumb-root,
-  .crumb-sep {
+.user-identity span {
+  max-width: 145px;
+  overflow: hidden;
+  color: #94a3b8;
+  font:
+    11px "JetBrains Mono",
+    monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-identity > i {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  color: #fff;
+  background: #0284c7;
+  border-radius: 50%;
+  font-style: normal;
+  font-weight: 700;
+}
+.user-identity button,
+.expand {
+  padding: 0;
+  color: #94a3b8;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 18px;
+}
+.console-content {
+  min-height: calc(100vh - 76px);
+  padding: 26px 38px 54px;
+}
+@media (max-width: 1100px) {
+  .console-sidebar {
+    width: 240px;
+  }
+  .cluster-health {
     display: none;
   }
-  .app-content {
-    padding: 20px 16px;
+  .console-content {
+    padding: 24px;
   }
-  .app-topbar {
+}
+@media (max-width: 780px) {
+  .console-sidebar {
+    width: 62px;
+  }
+  .console-brand {
+    padding: 0 13px;
+  }
+  .console-brand div,
+  .console-brand button,
+  .console-nav span,
+  .console-nav p,
+  .engine-status,
+  .kb-context,
+  .topbar-actions > a,
+  .api-ready,
+  .user-identity div {
+    display: none;
+  }
+  .console-nav {
+    padding: 19px 8px;
+  }
+  .console-nav a {
+    justify-content: center;
+    padding: 0;
+  }
+  .console-topbar {
+    height: 64px;
     padding: 0 16px;
+  }
+  .console-content {
+    padding: 18px 14px;
+  }
+  .tenant-picker :deep(.el-select) {
+    width: 110px;
+  }
+  .user-identity {
+    padding-left: 0;
+    border: 0;
   }
 }
 </style>

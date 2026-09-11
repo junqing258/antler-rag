@@ -1,7 +1,12 @@
 set dotenv-load := true
 
 dev:
-    (cd apps/backend && uv run uvicorn antler_rag.app:app --reload --port 8001) & pnpm --dir apps/frontend dev
+    #!/usr/bin/env bash
+    set -euo pipefail
+    (cd apps/backend && exec uv run uvicorn antler_rag.app:app --reload --reload-dir src --port 8001) &
+    backend_pid=$!
+    trap 'kill "$backend_pid" 2>/dev/null; wait "$backend_pid" 2>/dev/null || true' EXIT INT TERM
+    pnpm --dir apps/frontend dev
 
 test:
     cd apps/backend && uv run pytest

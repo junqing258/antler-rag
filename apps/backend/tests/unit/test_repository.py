@@ -25,3 +25,16 @@ def test_last_active_platform_admin_cannot_be_revoked(tmp_path: Path) -> None:
     assert admin
     with pytest.raises(ValueError, match="last active"):
         db.set_platform_admin(admin["id"], False)
+
+
+def test_bootstrap_creates_a_reusable_default_tenant_once(tmp_path: Path) -> None:
+    db = Database(tmp_path / "app.sqlite3")
+    db.migrate()
+
+    first = db.ensure_initial_tenant()
+    second = db.ensure_initial_tenant()
+
+    assert first and second and first["id"] == second["id"]
+    knowledge_bases = db.knowledge_bases(first["id"])
+    assert len(knowledge_bases) == 1
+    assert knowledge_bases[0]["is_default"] == 1

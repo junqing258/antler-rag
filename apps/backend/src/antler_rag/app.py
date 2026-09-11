@@ -176,6 +176,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 settings.bootstrap_admin_email,
                 password_hash.hash(settings.bootstrap_admin_password),
             )
+            db.ensure_initial_tenant()
         yield
 
     app = FastAPI(title="Antler RAG Admin API", version="0.1.0", lifespan=lifespan)

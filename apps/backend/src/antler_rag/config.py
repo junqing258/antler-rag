@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=REPOSITORY_ENV_FILE,
         env_file_encoding="utf-8",
+        env_prefix="RAG_",
         extra="ignore",
     )
 

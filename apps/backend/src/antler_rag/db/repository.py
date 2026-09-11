@@ -134,6 +134,33 @@ class Database:
                 raise
         return self.one("SELECT * FROM tenants WHERE id=?", (tenant_id,)) or {}
 
+    def ensure_initial_tenant(self) -> dict[str, Any] | None:
+        """Create the first usable tenant once during bootstrap, if none exists."""
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                existing = conn.execute("SELECT * FROM tenants ORDER BY created_at LIMIT 1").fetchone()
+                if existing:
+                    conn.commit()
+                    return dict(existing)
+                tenant_id, kb_id, stamp = str(uuid4()), str(uuid4()), now()
+                conn.execute(
+                    "INSERT INTO tenants(id,name,status,created_at,updated_at) VALUES(?,?,'active',?,?)",
+                    (tenant_id, "Default tenant", stamp, stamp),
+                )
+                conn.execute(
+                    "INSERT INTO knowledge_bases(id,tenant_id,name,is_default,status,chunk_size,chunk_overlap,created_at,updated_at) VALUES(?,?, 'Default knowledge base',1,'active',900,150,?,?)",
+                    (kb_id, tenant_id, stamp, stamp),
+                )
+                conn.execute(
+                    "INSERT OR IGNORE INTO app_settings(key,value) VALUES('bootstrap_default_tenant_created','true')"
+                )
+                conn.commit()
+                return self.tenant(tenant_id)
+            except Exception:
+                conn.rollback()
+                raise
+
     def tenant(self, tenant_id: str) -> dict[str, Any] | None:
         return self.one("SELECT * FROM tenants WHERE id=?", (tenant_id,))
 

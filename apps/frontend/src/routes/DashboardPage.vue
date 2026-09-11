@@ -1,0 +1,2 @@
+<script setup lang="ts">import { computed } from "vue"; import { authState } from "../composables/useAuth"; const mustChange = computed(()=>authState.user?.must_change_password);</script>
+<template><section><h2>概览</h2><el-alert v-if="mustChange" title="请先在 API 中修改初始密码后重新登录。" type="warning" :closable="false" /><p>选择知识库上传文档，或使用检索调试验证召回结果。</p><el-card><p>部署级 LLM 配置不会向浏览器暴露密钥；未配置时，问答接口仍会返回可用的来源片段。</p></el-card></section></template>

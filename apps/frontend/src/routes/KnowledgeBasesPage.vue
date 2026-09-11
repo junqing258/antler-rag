@@ -1,0 +1,11 @@
+<script setup lang="ts">
+import { onMounted, ref } from "vue"; import { api } from "../lib/request";
+const items=ref<any[]>([]); const name=ref(""); const error=ref(""); const selected=ref<any>(); const files=ref<File[]>([]);
+async function load(){try{items.value=(await api<any>("/api/v1/knowledge-bases")).items}catch(e:any){error.value=e.message}}
+async function create(){await api("/api/v1/knowledge-bases",{method:"POST",body:JSON.stringify({name:name.value})});name.value="";await load()}
+async function upload(){if(!selected.value||!files.value.length)return;const form=new FormData();files.value.forEach(f=>form.append("files",f));await api(`/api/v1/knowledge-bases/${selected.value.id}/documents`,{method:"POST",body:form});await documents()}
+const docs=ref<any[]>([]); async function documents(){docs.value=(await api<any>(`/api/v1/knowledge-bases/${selected.value.id}/documents`)).items} async function choose(kb:any){selected.value=kb;await documents()} async function remove(doc:any){await api(`/api/v1/knowledge-bases/${selected.value.id}/documents/${doc.id}`,{method:"DELETE"});await documents()}
+onMounted(load);
+</script>
+<template><section><h2>知识库</h2><el-alert v-if="error" :title="error" type="error" /><div class="actions"><el-input v-model="name" placeholder="新知识库名称" /><el-button type="primary" @click="create">新建</el-button></div><el-table :data="items" @row-click="choose"><el-table-column prop="name" label="名称" /><el-table-column prop="status" label="状态" /><el-table-column label="默认"><template #default="s">{{s.row.is_default?'是':'否'}}</template></el-table-column></el-table><div v-if="selected"><h3>{{selected.name}} 文档</h3><input type="file" multiple @change="files=Array.from(($event.target as HTMLInputElement).files ?? [])" /><el-button type="primary" @click="upload">上传并索引</el-button><el-table :data="docs"><el-table-column prop="filename" label="文件"/><el-table-column prop="status" label="状态"/><el-table-column prop="chunk_count" label="Chunks"/><el-table-column label="操作"><template #default="s"><el-button link type="danger" @click="remove(s.row)">删除</el-button></template></el-table-column></el-table></div></section></template>
+<style scoped>.actions{display:flex;gap:8px;margin:12px 0}.actions .el-input{max-width:300px}h3{margin-top:28px}</style>

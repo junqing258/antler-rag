@@ -23,6 +23,14 @@ pnpm-debug.log*
 .env
 .env.deploy
 
+# Python / application data
+.venv/
+.pytest_cache/
+.ruff_cache/
+data/
+apps/backend/src/antler_rag/static/*
+!apps/backend/src/antler_rag/static/.gitkeep
+
 *.local
 *.local.*
 .codegraph

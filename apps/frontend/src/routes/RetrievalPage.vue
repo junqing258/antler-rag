@@ -1,0 +1,5 @@
+<script setup lang="ts">
+import { onMounted, ref } from "vue"; import { api } from "../lib/request";
+const kbs=ref<any[]>([]), kb=ref(""), query=ref(""), results=ref<any[]>([]), error=ref(""); onMounted(async()=>{kbs.value=(await api<any>("/api/v1/knowledge-bases")).items;kb.value=kbs.value[0]?.id??""}); async function retrieve(){try{results.value=(await api<any>("/api/v1/retrieve",{method:"POST",body:JSON.stringify({knowledge_base_id:kb.value,query:query.value,top_k:5})})).results}catch(e:any){error.value=e.message}}
+</script>
+<template><section><h2>检索调试</h2><el-alert v-if="error" :title="error" type="error"/><el-select v-model="kb" placeholder="知识库"><el-option v-for="item in kbs" :key="item.id" :label="item.name" :value="item.id"/></el-select><el-input v-model="query" placeholder="输入问题" @keyup.enter="retrieve"/><el-button type="primary" @click="retrieve">检索</el-button><el-card v-for="result in results" :key="result.chunk_id"><template #header>{{result.filename}} · distance {{result.distance}}</template><pre>{{result.content}}</pre></el-card></section></template>

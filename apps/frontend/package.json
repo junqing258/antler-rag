@@ -1,0 +1,32 @@
+{
+  "name": "@antler-rag/admin",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "test": "vitest run",
+    "lint": "eslint src --ext .ts,.vue",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "element-plus": "^2.9.8",
+    "vue": "^3.5.13",
+    "vue-i18n": "11.1.2",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "eslint": "^9.17.0",
+    "eslint-plugin-vue": "^9.32.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2",
+    "vite": "^8.3.0",
+    "vitest": "^4.1.11",
+    "vue-tsc": "^2.2.0"
+  }
+}

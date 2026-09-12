@@ -57,3 +57,27 @@ def test_openai_compatible_embedding_function_rejects_invalid_response() -> None
 
     with pytest.raises(ValueError, match="invalid response"):
         function(["first"])
+
+
+def test_openai_compatible_embedding_function_batches_large_inputs() -> None:
+    requests: list[list[str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        texts = json.loads(request.content)["input"]
+        requests.append(texts)
+        return httpx.Response(
+            200,
+            json={"data": [{"index": index, "embedding": [float(text)]} for index, text in enumerate(texts)]},
+        )
+
+    function = OpenAICompatibleEmbeddingFunction(
+        base_url="https://example.test/v1",
+        api_key="test-key",
+        model="text-embedding-v4",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    vectors = function([str(index) for index in range(11)])
+
+    assert requests == [[str(index) for index in range(10)], ["10"]]
+    assert [vector.tolist() for vector in vectors] == [[float(index)] for index in range(11)]

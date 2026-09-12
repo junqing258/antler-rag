@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 import chromadb
@@ -12,6 +14,9 @@ from chromadb.api.types import Documents, EmbeddingFunction, Embeddings, Space
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from ..config import Settings
+
+MAX_EMBEDDING_BATCH_SIZE = 10
+logger = logging.getLogger("antler_rag")
 
 
 @dataclass(frozen=True)
@@ -46,15 +51,28 @@ class OpenAICompatibleEmbeddingFunction(EmbeddingFunction[Documents]):
     def __call__(self, input: Documents) -> Embeddings:
         if not input:
             return []
+        embeddings: Embeddings = []
+        for start in range(0, len(input), MAX_EMBEDDING_BATCH_SIZE):
+            embeddings.extend(self._embed_batch(input[start : start + MAX_EMBEDDING_BATCH_SIZE]))
+        return embeddings
+
+    def _embed_batch(self, input: Documents) -> Embeddings:
         payload: dict[str, Any] = {"model": self.model, "input": list(input)}
         if self.dimensions is not None:
             payload["dimensions"] = self.dimensions
-        response = self.client.post(
-            f"{self.base_url}/embeddings",
-            headers={"Authorization": f"Bearer {self.api_key}"},
-            json=payload,
-        )
-        response.raise_for_status()
+        started = perf_counter()
+        try:
+            response = self.client.post(
+                f"{self.base_url}/embeddings",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json=payload,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as error:
+            status_code = error.response.status_code if isinstance(error, httpx.HTTPStatusError) else None
+            logger.warning("embedding_request_failed model=%s batch_size=%d status=%s error_type=%s duration_ms=%d", self.model, len(input), status_code, type(error).__name__, (perf_counter() - started) * 1000)
+            raise
+        logger.info("embedding_request_completed model=%s batch_size=%d status=%s duration_ms=%d", self.model, len(input), response.status_code, (perf_counter() - started) * 1000)
         data = response.json().get("data")
         if not isinstance(data, list) or len(data) != len(input):
             raise ValueError("Embedding provider returned an invalid response")

@@ -16,6 +16,8 @@ import {
   Collection,
 } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 import { api } from "../lib/request";
 import ApiCodeSnippetModal from "../components/ApiCodeSnippetModal.vue";
 
@@ -34,6 +36,9 @@ const error = ref("");
 const showCodeModal = ref(false);
 const selectedKb = computed(() =>
   kbs.value.find((item) => item.id === kb.value),
+);
+const renderedAnswer = computed(() =>
+  DOMPurify.sanitize(marked.parse(chatAnswer.value, { async: false }) as string),
 );
 onMounted(async () => {
   try {
@@ -315,7 +320,8 @@ function useExample(text: string) {
               </h2>
               <span>RAG Model Complete</span>
             </header>
-            <p>{{ chatAnswer }}</p>
+            <!-- eslint-disable-next-line vue/no-v-html -- 内容经 DOMPurify 消毒 -->
+            <div class="chat-answer-body markdown-body" v-html="renderedAnswer"></div>
           </article>
           <article
             v-for="(source, index) in chatSources"
@@ -867,11 +873,111 @@ function useExample(text: string) {
     10px "JetBrains Mono",
     monospace;
 }
-.chat-answer p {
+.chat-answer-body {
   margin: 0;
   color: #334155;
   line-height: 1.7;
-  white-space: pre-wrap;
+  font-size: 13px;
+  word-break: break-word;
+}
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4) {
+  margin: 16px 0 8px;
+  color: #0f172a;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.markdown-body :deep(h1) {
+  font-size: 18px;
+}
+.markdown-body :deep(h2) {
+  font-size: 16px;
+}
+.markdown-body :deep(h3) {
+  font-size: 14px;
+}
+.markdown-body :deep(h1:first-child),
+.markdown-body :deep(h2:first-child),
+.markdown-body :deep(h3:first-child) {
+  margin-top: 0;
+}
+.markdown-body :deep(p) {
+  margin: 0 0 10px;
+}
+.markdown-body :deep(p:last-child) {
+  margin-bottom: 0;
+}
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  margin: 0 0 10px;
+  padding-left: 22px;
+}
+.markdown-body :deep(li) {
+  margin: 4px 0;
+}
+.markdown-body :deep(a) {
+  color: #0284c7;
+  text-decoration: none;
+}
+.markdown-body :deep(a:hover) {
+  text-decoration: underline;
+}
+.markdown-body :deep(code) {
+  padding: 2px 5px;
+  color: #0f172a;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 3px;
+  font:
+    12px "JetBrains Mono",
+    monospace;
+}
+.markdown-body :deep(pre) {
+  margin: 0 0 10px;
+  padding: 12px;
+  background: #0f172a;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.markdown-body :deep(pre code) {
+  padding: 0;
+  color: #e2e8f0;
+  background: transparent;
+  border: 0;
+  font-size: 12px;
+}
+.markdown-body :deep(blockquote) {
+  margin: 0 0 10px;
+  padding: 6px 12px;
+  color: #475569;
+  border-left: 3px solid #7dd3fc;
+  background: #f8fafc;
+}
+.markdown-body :deep(table) {
+  margin: 0 0 10px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.markdown-body :deep(th),
+.markdown-body :deep(td) {
+  padding: 6px 10px;
+  border: 1px solid #dbe3ed;
+  text-align: left;
+}
+.markdown-body :deep(th) {
+  color: #334155;
+  background: #f8fafc;
+  font-weight: 600;
+}
+.markdown-body :deep(hr) {
+  margin: 14px 0;
+  border: 0;
+  border-top: 1px solid #e2e8f0;
+}
+.markdown-body :deep(strong) {
+  color: #0f172a;
 }
 .empty-result {
   display: flex;

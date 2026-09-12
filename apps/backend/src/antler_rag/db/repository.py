@@ -180,6 +180,16 @@ class Database:
     def documents(self, kb_id: str) -> list[dict[str, Any]]: return self.many("SELECT * FROM documents WHERE knowledge_base_id=? AND status != 'deleted' ORDER BY created_at DESC", (kb_id,))
     def document(self, kb_id: str, doc_id: str) -> dict[str, Any] | None: return self.one("SELECT * FROM documents WHERE knowledge_base_id=? AND id=?", (kb_id,doc_id))
     def create_document(self, kb_id: str, filename: str, stored_filename: str, digest: str, size_bytes: int, created_by: str) -> dict[str, Any]:
+        existing = self.one("SELECT id,status FROM documents WHERE knowledge_base_id=? AND sha256=?", (kb_id, digest))
+        if existing:
+            if existing["status"] not in {"deleted", "failed"}:
+                raise ValueError("A document with identical content already exists")
+            stamp = now()
+            self.run(
+                "UPDATE documents SET filename=?,stored_filename=?,size_bytes=?,chunk_count=0,status='pending',error_message=NULL,created_by=?,created_at=?,updated_at=? WHERE id=?",
+                (filename, stored_filename, size_bytes, created_by, stamp, stamp, existing["id"]),
+            )
+            return self.document(kb_id, existing["id"]) or {}
         doc_id, stamp = str(uuid4()), now(); self.run("INSERT INTO documents(id,knowledge_base_id,filename,stored_filename,sha256,size_bytes,status,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,'pending',?,?,?)", (doc_id,kb_id,filename,stored_filename,digest,size_bytes,created_by,stamp,stamp)); return self.document(kb_id,doc_id) or {}
     def set_document_status(self, kb_id: str, doc_id: str, status: str, chunk_count: int | None = None, error: str | None = None) -> None: self.run("UPDATE documents SET status=?,chunk_count=COALESCE(?,chunk_count),error_message=?,updated_at=? WHERE knowledge_base_id=? AND id=?", (status,chunk_count,error,now(),kb_id,doc_id))
     def delete_document_record(self, kb_id: str, doc_id: str) -> None: self.run("UPDATE documents SET status='deleted',updated_at=? WHERE knowledge_base_id=? AND id=?", (now(),kb_id,doc_id))

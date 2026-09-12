@@ -151,7 +151,7 @@ onMounted(load);
 <template>
   <section class="kb-page">
     <div class="crumb">
-      <span>控制台</span><b>/</b><span>租户 default</span><b>/</b
+      <span>控制台</span><b>/</b><span>工作区</span><b>/</b
       ><strong>知识库管理</strong>
     </div>
     <header class="kb-heading">
@@ -161,7 +161,7 @@ onMounted(load);
           <span>{{ items.length }} Total</span>
         </div>
         <p>
-          面向多租户的向量知识库集合、切片分块策略与流水线全生命周期管理，提供高可靠标准检索端点。
+          管理全局知识库、切片分块策略与流水线全生命周期，并提供标准检索端点。
         </p>
       </div>
       <div class="heading-actions">

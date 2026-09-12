@@ -236,7 +236,7 @@ function useExample(text: string) {
           </div>
           <div class="metadata">
             <label>元数据硬过滤 (METADATA FILTER)</label
-            ><code>tenant_id = "default" &amp;&amp; status = "active"</code>
+            ><code>knowledge_base_id = "selected" &amp;&amp; status = "active"</code>
           </div>
           <el-button
             type="primary"

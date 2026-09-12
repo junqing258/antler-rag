@@ -7,6 +7,7 @@ import {
   CopyDocument,
   Delete,
   Operation,
+  Timer,
 } from "@element-plus/icons-vue";
 import { ElMessageBox, ElMessage } from "element-plus";
 import { api } from "../lib/request";
@@ -87,23 +88,37 @@ onMounted(load);
         <p class="eyebrow">DEVELOPER ACCESS</p>
         <h2>API Key 管理</h2>
         <p class="page-description">
-          为您的应用、Agent 或服务端程序创建独立的 API 访问密钥，精准控制可调用权限范畴。
+          为您的应用、Agent 或服务端程序创建独立的 API
+          访问密钥，精准控制可调用权限范畴。
         </p>
       </div>
 
-      <el-button type="primary" plain size="default" @click="showCodeModal = true">
+      <el-button
+        type="primary"
+        plain
+        size="default"
+        @click="showCodeModal = true"
+      >
         <el-icon class="mr-1"><Operation /></el-icon>查看 SDK / API 示例
       </el-button>
     </div>
 
-    <el-alert v-if="error" :title="error" type="error" show-icon class="notice" />
+    <el-alert
+      v-if="error"
+      :title="error"
+      type="error"
+      show-icon
+      class="notice"
+    />
 
     <!-- Newly Created Secret Alert Banner -->
     <div v-if="secret" class="secret-box">
       <div class="secret-icon"><WarningFilled /></div>
       <div class="secret-content">
         <strong>请立即复制并妥善保管您的 API Key</strong>
-        <p>出于安全原因，此明文密钥只会在此展示一次，刷新或离开页面后将无法再次查看。</p>
+        <p>
+          出于安全原因，此明文密钥只会在此展示一次，刷新或离开页面后将无法再次查看。
+        </p>
         <div class="secret-code-bar">
           <code class="secret-code">{{ secret }}</code>
           <el-button type="primary" size="small" @click="copySecret">
@@ -118,47 +133,90 @@ onMounted(load);
       <div class="panel-header">
         <div>
           <h3 class="panel-title">创建新访问凭证</h3>
-          <p class="panel-subtitle">默认有效期为 90 天，勾选该密钥允许执行的操作权限 (Scope)</p>
+          <p class="panel-subtitle">
+            默认有效期为 90 天，勾选该密钥允许执行的操作权限 (Scope)
+          </p>
         </div>
       </div>
 
       <div class="panel-body">
         <el-form class="key-form" @submit.prevent="create">
-          <div class="form-group name-group">
-            <label class="form-label">凭证名称 / 应用标识</label>
-            <el-input v-model="name" placeholder="例如：Customer Support Agent" />
+          <div class="credential-details items-center">
+            <div class="form-group name-group">
+              <label class="form-label" for="api-key-name"
+                >凭证名称 / 应用标识</label
+              >
+              <el-input
+                id="api-key-name"
+                v-model="name"
+                placeholder="例如：Customer Support Agent"
+              />
+              <p class="field-hint">
+                使用便于识别的名称，方便后续轮换和吊销凭证。
+              </p>
+            </div>
+
+            <div class="expiry-note">
+              <el-icon><Timer /></el-icon>
+              <div>
+                <strong>90 天有效期</strong>
+                <span>创建后自动生效，到期前请及时轮换</span>
+              </div>
+            </div>
           </div>
 
-          <div class="form-group scope-group">
-            <label class="form-label">授予定位权限 (Scopes)</label>
+          <div class="scope-group">
+            <div class="scope-heading">
+              <div>
+                <label class="form-label">授予访问权限 (Scopes)</label>
+                <p>仅勾选此应用实际需要的权限，降低凭证泄露风险。</p>
+              </div>
+              <span class="scope-count">已选择 {{ scopes.length }} 项</span>
+            </div>
             <el-checkbox-group v-model="scopes" class="scope-checkboxes">
               <el-checkbox label="retrieve">
-                <el-tag type="primary" size="small" effect="plain">retrieve</el-tag> 检索向量
+                <el-tag type="primary" size="small" effect="plain"
+                  >retrieve</el-tag
+                >
+                <span>检索向量</span>
               </el-checkbox>
               <el-checkbox label="chat">
-                <el-tag type="success" size="small" effect="plain">chat</el-tag> 问答对话
+                <el-tag type="success" size="small" effect="plain">chat</el-tag>
+                <span>问答对话</span>
               </el-checkbox>
               <el-checkbox label="documents:read">
-                <el-tag type="info" size="small" effect="plain">documents:read</el-tag> 读取文档
+                <el-tag type="info" size="small" effect="plain"
+                  >documents:read</el-tag
+                >
+                <span>读取文档</span>
               </el-checkbox>
               <el-checkbox label="documents:write">
-                <el-tag type="warning" size="small" effect="plain">documents:write</el-tag> 写入文档
+                <el-tag type="warning" size="small" effect="plain"
+                  >documents:write</el-tag
+                >
+                <span>写入文档</span>
               </el-checkbox>
               <el-checkbox label="documents:delete">
-                <el-tag type="danger" size="small" effect="plain">documents:delete</el-tag> 删除文档
+                <el-tag type="danger" size="small" effect="plain"
+                  >documents:delete</el-tag
+                >
+                <span>删除文档</span>
               </el-checkbox>
             </el-checkbox-group>
           </div>
 
-          <el-button
-            type="primary"
-            native-type="submit"
-            :loading="loading"
-            :disabled="!name.trim() || !scopes.length"
-            class="submit-key-btn"
-          >
-            <el-icon class="mr-1"><Plus /></el-icon>生成 API Key
-          </el-button>
+          <div class="form-actions">
+            <p class="action-hint">生成后，完整 API Key 仅展示一次。</p>
+            <el-button
+              type="primary"
+              native-type="submit"
+              :loading="loading"
+              :disabled="!name.trim() || !scopes.length"
+              class="submit-key-btn"
+            >
+              <el-icon class="mr-1"><Plus /></el-icon>生成 API Key
+            </el-button>
+          </div>
         </el-form>
       </div>
     </article>
@@ -168,12 +226,14 @@ onMounted(load);
       <div class="panel-header">
         <div>
           <h3 class="panel-title">已创建的 Keys ({{ items.length }})</h3>
-          <p class="panel-subtitle">建议定期轮换凭证，及时吊销长期未使用的访问密钥</p>
+          <p class="panel-subtitle">
+            建议定期轮换凭证，及时吊销长期未使用的访问密钥
+          </p>
         </div>
       </div>
 
       <div class="panel-body flush table-wrap">
-        <el-table :data="items" empty-text="当前租户尚未创建 API Key">
+        <el-table :data="items" empty-text="当前工作区尚未创建 API Key">
           <el-table-column prop="name" label="凭证名称" min-width="200">
             <template #default="s">
               <span class="key-name-cell">
@@ -283,9 +343,8 @@ onMounted(load);
 }
 
 .key-form {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+  display: grid;
+  gap: 24px;
 }
 
 .form-group {
@@ -293,24 +352,158 @@ onMounted(load);
   flex-direction: column;
 }
 
+.credential-details {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 28px;
+  padding-bottom: 2px;
+}
+
 .name-group {
-  max-width: 420px;
+  max-width: 520px;
+}
+
+.field-hint,
+.scope-heading p,
+.action-hint {
+  margin: 7px 0 0;
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.expiry-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 220px;
+  padding: 10px 12px;
+  color: #475569;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+}
+
+.expiry-note .el-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: #0284c7;
+  background: #e0f2fe;
+  border-radius: 7px;
+  font-size: 16px;
+}
+
+.expiry-note strong,
+.expiry-note span {
+  display: block;
+}
+
+.expiry-note strong {
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.expiry-note span {
+  margin-top: 1px;
+  color: #94a3b8;
+  font-size: 11px;
 }
 
 .scope-checkboxes {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  padding: 12px 16px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
 }
 
+.scope-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.scope-heading .form-label {
+  margin-bottom: 0;
+}
+
+.scope-heading p {
+  margin-top: 4px;
+}
+
+.scope-count {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  color: #64748b;
+  background: #f1f5f9;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.scope-checkboxes :deep(.el-checkbox) {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 46px;
+  margin-right: 0;
+  padding: 0 10px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.scope-checkboxes :deep(.el-checkbox.is-checked) {
+  background: #f0f9ff;
+  border-color: #7dd3fc;
+  box-shadow: 0 1px 2px rgba(2, 132, 199, 0.08);
+}
+
+.scope-checkboxes :deep(.el-checkbox__label) {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding-left: 8px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.scope-checkboxes :deep(.el-tag) {
+  flex-shrink: 0;
+  margin-right: 6px;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 4px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.action-hint {
+  margin: 0;
+}
+
 .submit-key-btn {
   width: fit-content;
-  height: 40px;
+  height: 42px;
   padding: 0 24px;
 }
 
@@ -349,5 +542,42 @@ onMounted(load);
 
 .mr-1 {
   margin-right: 4px;
+}
+
+@media (max-width: 1080px) {
+  .scope-checkboxes {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .credential-details {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .name-group,
+  .expiry-note {
+    max-width: none;
+    width: 100%;
+  }
+
+  .scope-heading,
+  .form-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .scope-count {
+    margin-top: -2px;
+  }
+
+  .scope-checkboxes {
+    grid-template-columns: 1fr;
+  }
+
+  .submit-key-btn {
+    width: 100%;
+  }
 }
 </style>

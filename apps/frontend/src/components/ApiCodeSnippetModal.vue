@@ -124,7 +124,7 @@ function copyCode() {
       </div>
 
       <div class="tip-box">
-        <strong>提示：</strong> API Key 可在 <router-link to="/api-keys" @click="handleClose">API Key 页面</router-link> 创建。API Key 调用时由服务端绑定租户边界。
+        <strong>提示：</strong> API Key 可在 <router-link to="/api-keys" @click="handleClose">API Key 页面</router-link> 创建，并按 scope 授予全局工作区 API 权限。
       </div>
     </div>
   </el-dialog>

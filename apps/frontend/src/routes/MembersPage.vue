@@ -13,7 +13,7 @@ const loading = ref(false);
 
 async function load() {
   try {
-    items.value = (await api<any>("/api/v1/members")).items || [];
+    items.value = (await api<any>("/api/v1/users")).items || [];
   } catch (e: any) {
     error.value = e.message;
   }
@@ -24,10 +24,9 @@ async function add() {
   loading.value = true;
   error.value = "";
   try {
-    await api("/api/v1/members", {
+    await api("/api/v1/users", {
       method: "POST",
       body: JSON.stringify({
-        mode: "new_user",
         email: email.value,
         initial_password: password.value,
         role: role.value,
@@ -47,16 +46,19 @@ async function add() {
 async function confirmRemove(item: any) {
   try {
     await ElMessageBox.confirm(
-      `确定要将成员 "${item.email}" 从当前租户中移除吗？`,
-      "移除成员确认",
+      `确定要停用用户 "${item.email}" 吗？`,
+      "停用用户确认",
       {
         confirmButtonText: "确认移除",
         cancelButtonText: "取消",
         type: "warning",
       },
     );
-    await api(`/api/v1/members/${item.id}`, { method: "DELETE" });
-    ElMessage.success("成员已被移除");
+    await api(`/api/v1/users/${item.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "disabled" }),
+    });
+    ElMessage.success("用户已停用");
     await load();
   } catch {
     // User cancelled
@@ -64,13 +66,13 @@ async function confirmRemove(item: any) {
 }
 
 function getRoleTagType(r: string) {
-  if (r === "tenant_admin") return "danger";
+  if (r === "admin") return "danger";
   if (r === "editor") return "warning";
   return "info";
 }
 
 function getRoleLabel(r: string) {
-  if (r === "tenant_admin") return "租户管理员";
+  if (r === "admin") return "管理员";
   if (r === "editor") return "编辑者";
   return "只读成员";
 }
@@ -84,9 +86,9 @@ onMounted(load);
     <div class="page-heading">
       <div>
         <p class="eyebrow">ACCESS CONTROL</p>
-        <h2>租户成员管理</h2>
+        <h2>用户管理</h2>
         <p class="page-description">
-          邀请团队成员协同维护知识库，通过细粒度角色控制其在这个租户中的访问与管理权限。
+          管理工作区用户，并通过全局角色控制知识库访问与管理权限。
         </p>
       </div>
     </div>
@@ -122,7 +124,7 @@ onMounted(load);
           <div class="form-item role-item">
             <label class="form-label">权限角色</label>
             <el-select v-model="role">
-              <el-option value="tenant_admin" label="Tenant Admin (租户管理员)" />
+              <el-option value="admin" label="Administrator (管理员)" />
               <el-option value="editor" label="Editor (编辑者)" />
               <el-option value="viewer" label="Viewer (只读成员)" />
             </el-select>

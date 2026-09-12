@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import {
   Connection,
@@ -7,39 +7,22 @@ import {
   Document,
   Key,
   Search,
-  Setting,
   User,
   SwitchButton,
-  OfficeBuilding,
   Expand,
   Fold,
   Reading,
   Operation,
 } from "@element-plus/icons-vue";
 import { api } from "../lib/request";
-import { authState, setTenant } from "../composables/useAuth";
+import { authState } from "../composables/useAuth";
 import ApiCodeSnippetModal from "../components/ApiCodeSnippetModal.vue";
 
 const router = useRouter();
 const route = useRoute();
-const tenants = ref<any[]>([]);
 const isCollapsed = ref(false);
 const showCodeModal = ref(false);
-const isAdmin = computed(() => authState.user?.is_platform_admin);
-const activeTenantName = computed(
-  () =>
-    tenants.value.find((item) => item.id === authState.tenantId)?.name ||
-    "选择租户",
-);
-onMounted(async () => {
-  try {
-    tenants.value = (await api<any>("/api/v1/auth/me/tenants")).items || [];
-    if (!authState.tenantId && tenants.value[0]) setTenant(tenants.value[0].id);
-  } catch {
-    authState.clear();
-    router.push("/login");
-  }
-});
+const isAdmin = computed(() => authState.user?.role === "admin");
 async function logout() {
   try {
     await api("/api/v1/auth/logout", { method: "POST" });
@@ -47,10 +30,6 @@ async function logout() {
     authState.clear();
     router.push("/login");
   }
-}
-function switchTenant(id: string) {
-  setTenant(id);
-  router.push("/");
 }
 </script>
 
@@ -81,15 +60,12 @@ function switchTenant(id: string) {
           ><span v-if="!isCollapsed"
             >检索测试 (Search Sandbox)</span
           ></router-link
-        ><router-link to="/members"
+        ><router-link v-if="isAdmin" to="/members"
           ><el-icon><User /></el-icon
-          ><span v-if="!isCollapsed">成员管理 (Members)</span></router-link
-        ><router-link to="/api-keys"
+          ><span v-if="!isCollapsed">用户管理 (Users)</span></router-link
+        ><router-link v-if="isAdmin" to="/api-keys"
           ><el-icon><Key /></el-icon
           ><span v-if="!isCollapsed">API Key</span></router-link
-        ><router-link v-if="isAdmin" to="/tenants"
-          ><el-icon><Setting /></el-icon
-          ><span v-if="!isCollapsed">租户管理 (Tenants)</span></router-link
         >
       </nav>
       <div class="engine-status" v-if="!isCollapsed">
@@ -109,19 +85,6 @@ function switchTenant(id: string) {
           >
             <el-icon><Expand /></el-icon>
           </button>
-          <div class="tenant-picker">
-            <el-icon><OfficeBuilding /></el-icon
-            ><el-select
-              :model-value="authState.tenantId"
-              :placeholder="activeTenantName"
-              @change="switchTenant"
-              ><el-option
-                v-for="tenant in tenants"
-                :key="tenant.id"
-                :label="tenant.name"
-                :value="tenant.id"
-            /></el-select>
-          </div>
           <div class="kb-context">
             <el-icon><Document /></el-icon
             ><span>{{
@@ -144,7 +107,7 @@ function switchTenant(id: string) {
           </button>
           <div class="user-identity">
             <div>
-              <strong>{{ isAdmin ? "Admin User" : "Tenant User" }}</strong
+              <strong>{{ isAdmin ? "Administrator" : authState.user?.role }}</strong
               ><span>{{ authState.user?.email }}</span>
             </div>
             <i>{{ authState.user?.email?.slice(0, 1).toUpperCase() }}</i

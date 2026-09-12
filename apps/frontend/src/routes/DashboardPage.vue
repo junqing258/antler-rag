@@ -206,7 +206,7 @@ onMounted(async () => {
           </div>
           <div class="secure-row">
             <span>鉴权模式</span>
-            <strong>Tenant ID & Bearer / API Key</strong>
+            <strong>Bearer / API Key</strong>
           </div>
           <p class="secure-note">
             前端浏览器仅处理管理与调试操作，部署级 LLM Key 永远不会泄露到客户端。未配置大模型密钥时，系统仍可作为高质召回引擎使用。

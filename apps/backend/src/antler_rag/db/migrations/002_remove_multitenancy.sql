@@ -1,0 +1,3 @@
+-- The v2 conversion is implemented transactionally in Database._migrate_v2.
+-- It requires dynamic role/name mapping and disables SQLite foreign-key checks
+-- before entering the table-rebuild transaction.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from pydantic import Field, model_validator
@@ -30,9 +31,13 @@ class Settings(BaseSettings):
     api_key_days: int = Field(default=90, ge=1, le=3650)
     bootstrap_admin_email: str | None = None
     bootstrap_admin_password: str | None = None
+    # The OpenAI-compatible provider is shared by chat and embeddings. Models are
+    # deliberately separate because an embedding model cannot serve /chat/completions.
     llm_base_url: str | None = None
     llm_api_key: str | None = None
-    llm_model: str | None = None
+    chat_model: str | None = None
+    embedding_model: str | None = None
+    embedding_dimensions: int | None = Field(default=None, ge=1, le=4096)
 
     @model_validator(mode="after")
     def validate_bootstrap(self) -> Settings:
@@ -51,5 +56,19 @@ class Settings(BaseSettings):
         return self.data_dir / "chroma"
 
     @property
-    def tenants_dir(self) -> Path:
-        return self.data_dir / "tenants"
+    def uploads_dir(self) -> Path:
+        return self.data_dir / "uploads"
+
+    @property
+    def embedding_collection(self) -> str:
+        """Keep vector spaces from different providers/models out of one collection."""
+        if not self.embedding_model:
+            return self.collection
+        fingerprint = "\0".join(
+            (
+                self.llm_base_url or "",
+                self.embedding_model,
+                str(self.embedding_dimensions or "default"),
+            )
+        )
+        return f"{self.collection}-{hashlib.sha256(fingerprint.encode()).hexdigest()[:12]}"

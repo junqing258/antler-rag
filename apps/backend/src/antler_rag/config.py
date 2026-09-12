@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     chat_model: str | None = None
     embedding_model: str | None = None
     embedding_dimensions: int | None = Field(default=None, ge=1, le=4096)
+    # URL of a Hugging Face Text Embeddings Inference service exposing POST /rerank.
+    # Leave unset to keep the lightweight vector-only deployment.
+    reranker_base_url: str | None = None
+    reranker_api_key: str | None = None
 
     @model_validator(mode="after")
     def validate_bootstrap(self) -> Settings:

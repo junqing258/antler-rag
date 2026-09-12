@@ -68,12 +68,12 @@ async function logout() {
           ><span v-if="!isCollapsed">API Key</span></router-link
         >
       </nav>
-      <div class="engine-status" v-if="!isCollapsed">
+      <!-- <div class="engine-status" v-if="!isCollapsed">
         <div><span></span><b>RRF Engine</b><em>ONLINE</em></div>
         <section>
           <small>TELEMETRY</small><strong>99.98% uptime</strong><i>14ms p99</i>
         </section>
-      </div>
+      </div> -->
     </aside>
     <div class="console-main">
       <header class="console-topbar">

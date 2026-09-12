@@ -6,3 +6,17 @@ def test_chat_request_accepts_message_and_query() -> None:
 
     assert ChatRequest.model_validate({**base, "message": "What tools are available?"}).query == "What tools are available?"
     assert ChatRequest.model_validate({**base, "query": "What tools are available?"}).query == "What tools are available?"
+
+
+def test_chat_request_accepts_retrieval_tuning_parameters() -> None:
+    request = ChatRequest.model_validate(
+        {
+            "knowledge_base_id": "knowledge-base",
+            "message": "What tools are available?",
+            "score_threshold": 0.7,
+            "rerank": True,
+        }
+    )
+
+    assert request.score_threshold == 0.7
+    assert request.rerank is True

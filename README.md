@@ -112,6 +112,8 @@ just docker-build
 | `RAG_CHAT_MODEL` | 无 | 用于 `/api/v1/chat` 的对话模型名。 |
 | `RAG_EMBEDDING_MODEL` | 无 | 用于文档索引和检索的 embedding 模型名，例如 `text-embedding-v4`。未设置时保留 Chroma 内置 embedding。 |
 | `RAG_EMBEDDING_DIMENSIONS` | 模型默认值 | 可选的 embedding 维数；使用 `text-embedding-v4` 时推荐固定为 `1024`。 |
+| `RAG_RERANKER_BASE_URL` | 无 | 可选的 Hugging Face Text Embeddings Inference（TEI）CrossEncoder 服务地址；服务可加载 `BAAI/bge-reranker-large`。 |
+| `RAG_RERANKER_API_KEY` | 无 | 可选的 TEI 服务 Bearer Token。 |
 
 未配置 `RAG_CHAT_MODEL` 时，`/api/v1/chat` 不会生成回答，但仍会返回召回的来源片段，方便 Agent 自行处理上下文。
 
@@ -157,9 +159,13 @@ curl -X POST http://localhost:8000/api/v1/retrieve \
   -d '{
     "knowledge_base_id": "your-knowledge-base-id",
     "query": "退款政策是什么？",
-    "top_k": 5
+    "top_k": 5,
+    "score_threshold": 0.65,
+    "rerank": false
   }'
 ```
+
+`score_threshold` 可选，取值为 `0` 到 `1`；它按照 `1 - cosine_distance` 过滤向量候选。`rerank` 默认关闭；启用前需配置 `RAG_RERANKER_BASE_URL`，指向提供 `POST /rerank` 的 Hugging Face Text Embeddings Inference（TEI）CrossEncoder 服务。启用后系统会先召回最多 `4 × top_k` 个候选、应用阈值、再由 CrossEncoder 重新排序，最后返回 `top_k` 条结果。
 
 ## 数据与运维边界
 

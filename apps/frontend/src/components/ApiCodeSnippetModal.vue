@@ -7,6 +7,8 @@ const props = defineProps<{
   visible: boolean;
   knowledgeBaseId?: string;
   query?: string;
+  scoreThreshold?: number;
+  rerank?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -17,6 +19,8 @@ const activeTab = ref("curl");
 
 const kbId = computed(() => props.knowledgeBaseId || "YOUR_KNOWLEDGE_BASE_ID");
 const testQuery = computed(() => props.query || "退款政策是什么？");
+const scoreThreshold = computed(() => props.scoreThreshold ?? 0.65);
+const rerank = computed(() => props.rerank ?? false);
 
 const baseUrl = computed(() => window.location.origin);
 
@@ -27,7 +31,9 @@ const curlSnippet = computed(() => {
   -d '{
     "knowledge_base_id": "${kbId.value}",
     "query": "${testQuery.value}",
-    "top_k": 5
+    "top_k": 5,
+    "score_threshold": ${scoreThreshold.value},
+    "rerank": ${rerank.value}
   }'`;
 });
 
@@ -42,7 +48,9 @@ headers = {
 payload = {
     "knowledge_base_id": "${kbId.value}",
     "query": "${testQuery.value}",
-    "top_k": 5
+    "top_k": 5,
+    "score_threshold": ${scoreThreshold.value},
+    "rerank": ${rerank.value}
 }
 
 response = requests.post(url, json=payload, headers=headers)
@@ -63,7 +71,9 @@ const jsSnippet = computed(() => {
   body: JSON.stringify({
     knowledge_base_id: "${kbId.value}",
     query: "${testQuery.value}",
-    top_k: 5
+    top_k: 5,
+    score_threshold: ${scoreThreshold.value},
+    rerank: ${rerank.value}
   })
 });
 

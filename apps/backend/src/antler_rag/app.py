@@ -23,7 +23,7 @@ from .db import Database
 from .db.repository import now
 from .documents import UnsupportedDocument, extract_text
 from .rag import RAGStore, RetrievedChunk
-from .rag.store import upload_path
+from .rag.store import RerankerError, upload_path
 
 password_hash = PasswordHash.recommended()
 ROLES = {"admin", "editor", "viewer"}
@@ -98,6 +98,8 @@ class RetrieveRequest(BaseModel):
     query: str = Field(min_length=1, max_length=10_000)
     top_k: int = Field(default=5, ge=1, le=20)
     document_ids: list[str] | None = Field(default=None, max_length=100)
+    score_threshold: float | None = Field(default=None, ge=0, le=1)
+    rerank: bool = False
 
 
 class ChatRequest(RetrieveRequest):
@@ -131,7 +133,7 @@ def public_key(key: dict[str, Any]) -> dict[str, Any]:
 
 
 def chunk_payload(chunk: RetrievedChunk) -> dict[str, str | float | int | None]:
-    return {"chunk_id": chunk.chunk_id, "document_id": chunk.document_id, "knowledge_base_id": chunk.knowledge_base_id, "filename": chunk.filename, "content": chunk.content, "distance": chunk.distance, "chunk_index": chunk.chunk_index}
+    return {"chunk_id": chunk.chunk_id, "document_id": chunk.document_id, "knowledge_base_id": chunk.knowledge_base_id, "filename": chunk.filename, "content": chunk.content, "distance": chunk.distance, "chunk_index": chunk.chunk_index, "rerank_score": chunk.rerank_score}
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -511,13 +513,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/v1/retrieve")
     def retrieve(payload: RetrieveRequest, _: Principal = Depends(access("retrieve", ROLES)), database: Database = Depends(db), rag: RAGStore = Depends(store)) -> dict[str, Any]:
         validate_retrieve(payload, database)
-        return {"results": [chunk_payload(chunk) for chunk in rag.retrieve(knowledge_base_id=payload.knowledge_base_id, query=payload.query, top_k=payload.top_k, document_ids=payload.document_ids)]}
+        try:
+            chunks = rag.retrieve(knowledge_base_id=payload.knowledge_base_id, query=payload.query, top_k=payload.top_k, document_ids=payload.document_ids, score_threshold=payload.score_threshold, rerank=payload.rerank)
+        except RerankerError as error:
+            raise APIError("reranker_unavailable", str(error), 503) from error
+        return {"results": [chunk_payload(chunk) for chunk in chunks]}
 
     @app.post("/api/v1/chat")
     async def chat(payload: ChatRequest, request: Request, _: Principal = Depends(access("chat", ROLES)), database: Database = Depends(db), rag: RAGStore = Depends(store)) -> dict[str, Any]:
         validate_retrieve(payload, database)
-        chunks = rag.retrieve(knowledge_base_id=payload.knowledge_base_id,
-                              query=payload.query, top_k=payload.top_k, document_ids=payload.document_ids)
+        try:
+            chunks = rag.retrieve(knowledge_base_id=payload.knowledge_base_id,
+                                  query=payload.query, top_k=payload.top_k, document_ids=payload.document_ids,
+                                  score_threshold=payload.score_threshold, rerank=payload.rerank)
+        except RerankerError as error:
+            raise APIError("reranker_unavailable", str(error), 503) from error
         sources = [chunk_payload(chunk) for chunk in chunks]
         if not settings.llm_base_url or not settings.chat_model:
             return {"answer": None, "sources": sources, "detail": "LLM is not configured; use sources as Agent context."}

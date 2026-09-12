@@ -27,7 +27,7 @@ const query = ref("");
 const mode = ref<"retrieve" | "chat">("retrieve");
 const topK = ref(5);
 const threshold = ref(0.65);
-const rerank = ref(true);
+const rerank = ref(false);
 const results = ref<any[]>([]);
 const chatAnswer = ref("");
 const chatSources = ref<any[]>([]);
@@ -63,6 +63,8 @@ async function executeSearch() {
           knowledge_base_id: kb.value,
           query: query.value,
           top_k: topK.value,
+          score_threshold: threshold.value,
+          rerank: rerank.value,
         }),
       });
       results.value = res.results || [];
@@ -73,6 +75,8 @@ async function executeSearch() {
           knowledge_base_id: kb.value,
           message: query.value,
           top_k: topK.value,
+          score_threshold: threshold.value,
+          rerank: rerank.value,
         }),
       });
       chatAnswer.value = res.answer || res.message || "收到召回结果：";
@@ -86,7 +90,7 @@ async function executeSearch() {
 }
 function similarity(distance: number) {
   return typeof distance === "number"
-    ? Math.round(Math.max(0, Math.min(100, (1 - distance / 1.5) * 100)))
+    ? Math.round(Math.max(0, Math.min(100, (1 - distance) * 100)))
     : 85;
 }
 function copyChunk(content: string) {
@@ -109,7 +113,7 @@ function useExample(text: string) {
         </div>
         <h1>检索测试</h1>
         <p>
-          实时调试多租户知识库检索管道、向量召回与重排效果，验证混合检索与过滤参数
+          实时调试知识库的向量召回、相似度过滤与可选的神经重排效果
         </p>
       </div>
       <div class="heading-buttons">
@@ -183,7 +187,7 @@ function useExample(text: string) {
             <h2>
               <el-icon><DataAnalysis /></el-icon>检索管道超参数
             </h2>
-            <span>RRF k=60</span>
+            <span>向量检索</span>
           </header>
           <label>召回算法模式 (MODE)</label>
           <div class="mode-toggle">
@@ -191,17 +195,18 @@ function useExample(text: string) {
               :class="{ active: mode === 'retrieve' }"
               @click="mode = 'retrieve'"
             >
-              混合检索<br />(Hybrid)</button
-            ><button
+              向量检索<br />(Vector)
+            </button>
+            <button
               :class="{ active: mode === 'chat' }"
               @click="mode = 'chat'"
             >
-              RAG 问答<br />(Chat)</button
-            ><button>全文关键词<br />(BM25)</button>
+              RAG 问答<br />(Chat)
+            </button>
           </div>
           <div class="topk-row">
             <div>
-              <b>TOP-K 召回限制</b><span>最终送入 Reranker 的候选数</span>
+              <b>TOP-K 返回限制</b><span>最终返回的结果数量</span>
             </div>
             <div>
               <button
@@ -235,7 +240,7 @@ function useExample(text: string) {
             <el-icon><DataAnalysis /></el-icon>
             <div>
               <b>神经重排 (Reranker)</b
-              ><span>Cross-Encoder: bge-reranker-large</span>
+              ><span>Cross-Encoder（需配置 RAG_RERANKER_BASE_URL）</span>
             </div>
             <el-switch v-model="rerank" />
           </div>
@@ -262,8 +267,9 @@ function useExample(text: string) {
             ><b>命中：{{ results.length || chatSources.length || "—" }} Hits</b>
           </div>
           <p>
-            <el-icon><Check /></el-icon>总耗时: <strong>42ms</strong>（Dense
-            18ms ｜ BM25 9ms ｜ Rerank 15ms）
+            <el-icon><Check /></el-icon>已应用阈值过滤
+            <strong v-if="rerank">与神经重排</strong
+            ><strong v-else>；未启用神经重排</strong>
           </p>
           <footer>
             <button class="active">▤ 卡片</button><button>▦ 表格</button
@@ -287,7 +293,8 @@ function useExample(text: string) {
               </div>
               <div class="score">
                 Score: {{ (similarity(result.distance) / 100).toFixed(3)
-                }}<small>（Cosine Dist: {{ result.distance ?? "—" }}）</small>
+                }}<small>（Cosine Dist: {{ result.distance ?? "—" }}）</small
+                ><small v-if="result.rerank_score !== null && result.rerank_score !== undefined">Rerank: {{ result.rerank_score.toFixed(3) }}</small>
               </div>
             </header>
             <div class="result-content">{{ result.content }}</div>
@@ -349,7 +356,7 @@ function useExample(text: string) {
           <el-icon><ChatDotRound /></el-icon><strong>等待执行检索</strong>
           <p>设置查询文本和调试参数后，召回片段将在此展示。</p>
         </div>
-        <div class="search-tip">
+        <div class="search-tip mt-4">
           <el-icon><Lightning /></el-icon
           ><span
             >提示：若召回结果过多噪音切片，可尝试调高 Rerank 过滤阈值至
@@ -362,6 +369,8 @@ function useExample(text: string) {
       v-model:visible="showCodeModal"
       :knowledge-base-id="kb"
       :query="query"
+      :score-threshold="threshold"
+      :rerank="rerank"
     />
   </section>
 </template>

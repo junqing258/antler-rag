@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
 from pathlib import Path
 from time import perf_counter
-from typing import Any
+from typing import Any, Protocol
 
 import chromadb
 import httpx
@@ -28,6 +29,55 @@ class RetrievedChunk:
     content: str
     distance: float | None
     chunk_index: int
+    rerank_score: float | None = None
+
+
+class RerankerError(RuntimeError):
+    """Raised when a requested reranker cannot be used."""
+
+
+class Reranker(Protocol):
+    def score(self, query: str, documents: Sequence[str]) -> list[float]: ...
+
+
+class TEIReranker:
+    """CrossEncoder reranking through Hugging Face Text Embeddings Inference's /rerank API."""
+
+    def __init__(self, *, base_url: str, api_key: str | None = None, client: httpx.Client | None = None):
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.client = client or httpx.Client(timeout=httpx.Timeout(60, connect=10))
+
+    def close(self) -> None:
+        self.client.close()
+
+    def score(self, query: str, documents: Sequence[str]) -> list[float]:
+        if not documents:
+            return []
+        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        started = perf_counter()
+        try:
+            response = self.client.post(f"{self.base_url}/rerank", headers=headers,
+                                        json={"query": query, "texts": list(documents)})
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError) as error:
+            logger.warning("reranker_request_failed candidates=%d error_type=%s duration_ms=%d", len(documents), type(error).__name__, (perf_counter() - started) * 1000)
+            raise RerankerError("Reranker request failed") from error
+        if not isinstance(payload, list):
+            raise RerankerError("Reranker returned an invalid response")
+        scores: list[float | None] = [None] * len(documents)
+        try:
+            for item in payload:
+                index = item["index"]
+                if not isinstance(index, int) or not 0 <= index < len(documents):
+                    raise ValueError
+                scores[index] = float(item["score"])
+        except (KeyError, TypeError, ValueError) as error:
+            raise RerankerError("Reranker returned an invalid response") from error
+        if any(score is None for score in scores):
+            raise RerankerError("Reranker returned an incomplete response")
+        return [float(score) for score in scores]
 
 
 class OpenAICompatibleEmbeddingFunction(EmbeddingFunction[Documents]):
@@ -112,6 +162,8 @@ class RAGStore:
         settings.chroma_dir.mkdir(parents=True, exist_ok=True)
         self.client = chromadb.PersistentClient(path=str(settings.chroma_dir))
         self.embedding_function: EmbeddingFunction[Documents] | None = None
+        self.reranker: Reranker | None = TEIReranker(base_url=settings.reranker_base_url,
+                                                      api_key=settings.reranker_api_key) if settings.reranker_base_url else None
         if settings.embedding_model:
             if not settings.llm_base_url or not settings.llm_api_key:
                 raise ValueError(
@@ -148,6 +200,8 @@ class RAGStore:
     def close(self) -> None:
         if isinstance(self.embedding_function, OpenAICompatibleEmbeddingFunction):
             self.embedding_function.client.close()
+        if isinstance(self.reranker, TEIReranker):
+            self.reranker.close()
 
     @staticmethod
     def _where(knowledge_base_id: str, document_ids: list[str] | None = None) -> dict:
@@ -168,9 +222,28 @@ class RAGStore:
         )
         return len(chunks)
 
-    def retrieve(self, *, knowledge_base_id: str, query: str, top_k: int, document_ids: list[str] | None = None) -> list[RetrievedChunk]:
-        result = self.collection.query(query_texts=[query], n_results=top_k, where=self._where(knowledge_base_id, document_ids), include=["documents", "metadatas", "distances"])
-        return [RetrievedChunk(chunk_id=chunk_id, document_id=str(metadata["document_id"]), knowledge_base_id=str(metadata["knowledge_base_id"]), filename=str(metadata["filename"]), content=document, distance=distance, chunk_index=int(metadata["chunk_index"])) for chunk_id, document, metadata, distance in zip(result.get("ids", [[]])[0], result.get("documents", [[]])[0], result.get("metadatas", [[]])[0], result.get("distances", [[]])[0], strict=True)]
+    @staticmethod
+    def similarity_score(distance: float | None) -> float:
+        """Map Chroma cosine distance to cosine similarity, clamped to the UI's 0–1 range."""
+        if distance is None:
+            return 0.0
+        return max(0.0, min(1.0, 1.0 - distance))
+
+    def retrieve(self, *, knowledge_base_id: str, query: str, top_k: int, document_ids: list[str] | None = None, score_threshold: float | None = None, rerank: bool = False) -> list[RetrievedChunk]:
+        if rerank and self.reranker is None:
+            raise RerankerError("Reranking is not configured. Set RAG_RERANKER_BASE_URL before enabling rerank.")
+        # A CrossEncoder needs a larger candidate set to improve the final top-k order.
+        candidate_count = min(100, top_k * 4) if rerank else top_k
+        result = self.collection.query(query_texts=[query], n_results=candidate_count, where=self._where(knowledge_base_id, document_ids), include=["documents", "metadatas", "distances"])
+        chunks = [RetrievedChunk(chunk_id=chunk_id, document_id=str(metadata["document_id"]), knowledge_base_id=str(metadata["knowledge_base_id"]), filename=str(metadata["filename"]), content=document, distance=distance, chunk_index=int(metadata["chunk_index"])) for chunk_id, document, metadata, distance in zip(result.get("ids", [[]])[0], result.get("documents", [[]])[0], result.get("metadatas", [[]])[0], result.get("distances", [[]])[0], strict=True)]
+        if score_threshold is not None:
+            chunks = [chunk for chunk in chunks if self.similarity_score(chunk.distance) >= score_threshold]
+        if rerank and chunks:
+            assert self.reranker is not None
+            scores = self.reranker.score(query, [chunk.content for chunk in chunks])
+            chunks = [replace(chunk, rerank_score=score) for chunk, score in zip(chunks, scores, strict=True)]
+            chunks.sort(key=lambda chunk: chunk.rerank_score if chunk.rerank_score is not None else float("-inf"), reverse=True)
+        return chunks[:top_k]
 
     def delete_document(self, knowledge_base_id: str, document_id: str) -> None:
         payload = self.collection.get(where=self._where(knowledge_base_id, [document_id]), include=[])

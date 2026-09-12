@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import {
   DocumentAdd,
   Files,
@@ -35,6 +36,8 @@ const chunkLoading = ref(false);
 const showCreate = ref(false);
 const cardView = ref(true);
 const filter = ref("");
+const router = useRouter();
+const documentsRef = ref<HTMLElement | null>(null);
 async function load() {
   try {
     items.value = (await api<any>("/api/v1/knowledge-bases")).items || [];
@@ -62,6 +65,13 @@ async function create() {
 async function choose(kb: any) {
   selectedKb.value = kb;
   await fetchDocuments();
+}
+function testRetrieval(kb: any) {
+  router.push({ path: "/retrieve", query: { kb: kb.id } });
+}
+async function manageDocuments(kb: any) {
+  await choose(kb);
+  documentsRef.value?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 async function fetchDocuments() {
   if (!selectedKb.value) return;
@@ -278,17 +288,17 @@ onMounted(load);
         </section>
         <footer>
           <span>更新于：刚刚</span
-          ><button type="button" @click.stop="choose(item)">
+          ><button type="button" @click.stop="testRetrieval(item)">
             <el-icon><Search /></el-icon>测试检索</button
-          ><button type="button" @click.stop="choose(item)">文档管理</button
-          ><i>⋮</i>
+          ><button type="button" @click.stop="manageDocuments(item)">文档管理</button
+          ><!-- <i>⋮</i> -->
         </footer>
       </article>
       <div v-if="!filteredItems.length" class="no-kbs">
         尚未找到知识库。点击右上方按钮创建第一个知识库。
       </div>
     </div>
-    <article v-if="selectedKb" class="documents">
+    <article v-if="selectedKb" ref="documentsRef" class="documents">
       <header>
         <div>
           <h2>「{{ selectedKb.name }}」文档集</h2>

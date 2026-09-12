@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRoute } from "vue-router";
 import {
   ChatDotRound,
   Document,
@@ -34,6 +35,7 @@ const chatSources = ref<any[]>([]);
 const loading = ref(false);
 const error = ref("");
 const showCodeModal = ref(false);
+const route = useRoute();
 const selectedKb = computed(() =>
   kbs.value.find((item) => item.id === kb.value),
 );
@@ -43,7 +45,11 @@ const renderedAnswer = computed(() =>
 onMounted(async () => {
   try {
     kbs.value = (await api<any>("/api/v1/knowledge-bases")).items || [];
-    kb.value = kbs.value[0]?.id ?? "";
+    const preset = route.query.kb;
+    kb.value =
+      preset && kbs.value.some((item) => item.id === preset)
+        ? String(preset)
+        : (kbs.value[0]?.id ?? "");
   } catch (e: any) {
     error.value = e.message;
   }

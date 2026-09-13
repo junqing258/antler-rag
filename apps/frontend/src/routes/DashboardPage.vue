@@ -6,7 +6,7 @@ import {
   Promotion,
   Search,
   Key,
-  Lock,
+  Folder,
   Files,
   ArrowRight,
   Operation,
@@ -107,10 +107,10 @@ onMounted(async () => {
         color="violet"
       />
       <StatCard
-        title="多租户隔离"
+        title="全局工作区"
         value="SQLite + Chroma"
-        subtitle="租户间数据全链路物理隔离"
-        :icon="Lock"
+        subtitle="单一工作区统一存储与检索"
+        :icon="Folder"
         color="indigo"
       />
     </div>

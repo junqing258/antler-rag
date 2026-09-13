@@ -18,12 +18,12 @@ from fastapi.staticfiles import StaticFiles
 from pwdlib import PasswordHash
 from pydantic import AliasChoices, BaseModel, Field
 
-from .config import Settings
-from .db import Database
-from .db.repository import now
-from .documents import UnsupportedDocument, extract_text
-from .rag import RAGStore, RetrievedChunk
-from .rag.store import RerankerError, upload_path
+from config import Settings
+from db import Database
+from db.repository import now
+from documents import UnsupportedDocument, extract_text
+from rag import RAGStore, RetrievedChunk
+from rag.store import RerankerError, upload_path
 
 password_hash = PasswordHash.recommended()
 ROLES = {"admin", "editor", "viewer"}
@@ -145,7 +145,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if database.schema_version() == 1:
             raise RuntimeError(
                 "Legacy multi-tenant data detected; stop the service, back up the complete data directory, "
-                "then run `python -m antler_rag.migrate_single_workspace --data-dir ... --confirm`"
+                "then run `python -m migrate_single_workspace --data-dir ... --confirm`"
             )
         database.migrate()
         if settings.bootstrap_admin_email and settings.bootstrap_admin_password:

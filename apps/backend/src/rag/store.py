@@ -14,7 +14,7 @@ from chromadb.api.models.Collection import Collection
 from chromadb.api.types import Documents, EmbeddingFunction, Embeddings, Space
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from ..config import Settings
+from config import Settings
 
 MAX_EMBEDDING_BATCH_SIZE = 10
 logger = logging.getLogger("antler_rag")

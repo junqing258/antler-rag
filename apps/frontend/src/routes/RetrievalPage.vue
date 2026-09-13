@@ -173,14 +173,14 @@ function useExample(text: string) {
           <textarea
             v-model="query"
             maxlength="512"
-            placeholder="如何配置多租户隔离与 API 鉴权？"
+            placeholder="如何配置 API Key 与接口鉴权？"
             @keydown.ctrl.enter="executeSearch"
             @keydown.meta.enter="executeSearch"
           ></textarea>
           <div class="quick-examples">
             <b>快速示例：</b
-            ><button @click="useExample('如何配置多租户隔离与 API 鉴权？')">
-              多租户鉴权</button
+            ><button @click="useExample('如何配置 API Key 与接口鉴权？')">
+              API 鉴权</button
             ><button @click="useExample('文档切片重排配置有哪些建议？')">
               切片重排配置</button
             ><button @click="useExample('API 的限流规则是什么？')">

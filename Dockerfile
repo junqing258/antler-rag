@@ -14,9 +14,9 @@ RUN groupadd --gid 10001 app && useradd --uid 10001 --gid 10001 --create-home ap
 COPY apps/backend/pyproject.toml apps/backend/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY apps/backend/src src
-COPY --from=frontend /workspace/apps/frontend/dist src/antler_rag/static
+COPY --from=frontend /workspace/apps/frontend/dist src/static
 RUN uv sync --frozen --no-dev && mkdir -p /data /app/.cache && chown -R app:app /data /app
 USER app
 ENV RAG_DATA_DIR=/data
 EXPOSE 8000
-CMD ["/app/.venv/bin/uvicorn", "antler_rag.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["/app/.venv/bin/uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

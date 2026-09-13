@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from antler_rag.db import Database
+from db import Database
 
 
 def test_bootstrap_creates_global_admin_without_default_knowledge_base(tmp_path: Path) -> None:
@@ -56,7 +56,7 @@ def test_reupload_reuses_a_deleted_or_failed_document_record(tmp_path: Path, sta
 def test_v2_migrates_multiple_default_knowledge_bases_and_revokes_credentials(tmp_path: Path) -> None:
     db_path = tmp_path / "app.sqlite3"
     legacy = Database(db_path)
-    migration = Path(__file__).parents[2] / "src/antler_rag/db/migrations/001_initial.sql"
+    migration = Path(__file__).parents[2] / "src/db/migrations/001_initial.sql"
     with legacy.connection() as conn:
         conn.executescript(migration.read_text())
         conn.execute("INSERT INTO schema_migrations(version,applied_at) VALUES(1,'now')")

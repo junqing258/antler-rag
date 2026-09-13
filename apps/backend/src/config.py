@@ -6,7 +6,7 @@ from pathlib import Path
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-REPOSITORY_ENV_FILE = Path(__file__).resolve().parents[4] / ".env"
+REPOSITORY_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
 
 
 class Settings(BaseSettings):

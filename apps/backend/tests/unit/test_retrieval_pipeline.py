@@ -3,7 +3,7 @@ import json
 import httpx
 import pytest
 
-from antler_rag.rag.store import RAGStore, RerankerError, TEIReranker
+from rag.store import RAGStore, RerankerError, TEIReranker
 
 
 class FakeCollection:

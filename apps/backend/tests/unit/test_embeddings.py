@@ -3,7 +3,7 @@ import json
 import httpx
 import pytest
 
-from antler_rag.rag.store import OpenAICompatibleEmbeddingFunction
+from rag.store import OpenAICompatibleEmbeddingFunction
 
 
 def test_openai_compatible_embedding_function_orders_vectors_by_index() -> None:

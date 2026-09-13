@@ -2,8 +2,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from antler_rag.app import create_app
-from antler_rag.config import Settings
+from app import create_app
+from config import Settings
 
 
 def test_chat_accepts_message_body_field(tmp_path: Path) -> None:

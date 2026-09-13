@@ -1,6 +1,6 @@
 import pytest
 
-from antler_rag.documents import UnsupportedDocument, extract_text
+from documents import UnsupportedDocument, extract_text
 
 
 def test_extracts_utf8_text() -> None:

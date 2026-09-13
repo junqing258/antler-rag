@@ -6,11 +6,11 @@ import argparse
 
 import httpx
 
-from .config import Settings
-from .db import Database
-from .documents import UnsupportedDocument, extract_text
-from .rag import RAGStore
-from .rag.store import upload_path
+from config import Settings
+from db import Database
+from documents import UnsupportedDocument, extract_text
+from rag import RAGStore
+from rag.store import upload_path
 
 
 def rebuild(settings: Settings, database: Database, store: RAGStore) -> tuple[int, int]:

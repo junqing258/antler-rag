@@ -81,7 +81,7 @@ just dev
 Vite 会将 `/api` 请求代理到后端。也可以分别运行：
 
 ```bash
-cd apps/backend && uv sync && uv run uvicorn antler_rag.app:app --reload --reload-dir src --port 8001
+cd apps/backend && uv sync && uv run uvicorn app:app --reload --reload-dir src --port 8001
 pnpm --dir apps/frontend dev
 ```
 
@@ -117,7 +117,7 @@ just docker-build
 
 未配置 `RAG_CHAT_MODEL` 时，`/api/v1/chat` 不会生成回答，但仍会返回召回的来源片段，方便 Agent 自行处理上下文。
 
-配置外部 embedding 后，应用会使用一个由服务地址、模型和维数指纹命名的新 Chroma collection，避免新旧向量空间混用。存量文档需要显式重建索引：先备份完整数据目录，随后在维护窗口运行 `cd apps/backend && uv run python -m antler_rag.reindex_embeddings --confirm`。 
+配置外部 embedding 后，应用会使用一个由服务地址、模型和维数指纹命名的新 Chroma collection，避免新旧向量空间混用。存量文档需要显式重建索引：先备份完整数据目录，随后在维护窗口运行 `cd apps/backend && uv run python -m reindex_embeddings --confirm`。 
 
 ## 使用流程
 
@@ -177,7 +177,7 @@ curl -X POST http://localhost:8000/api/v1/retrieve \
 
 ```bash
 cd apps/backend
-uv run python -m antler_rag.migrate_single_workspace --data-dir /data --dry-run
+uv run python -m migrate_single_workspace --data-dir /data --dry-run
 ```
 
 核对报告后，才在维护窗口中以 `--confirm` 执行迁移。该过程会撤销旧会话和 API Key、复制上传文件并重建 Chroma 索引。

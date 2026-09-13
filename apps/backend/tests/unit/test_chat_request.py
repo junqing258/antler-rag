@@ -1,4 +1,4 @@
-from antler_rag.app import ChatRequest
+from app import ChatRequest
 
 
 def test_chat_request_accepts_message_and_query() -> None:

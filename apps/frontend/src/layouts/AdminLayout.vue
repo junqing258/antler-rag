@@ -2,7 +2,6 @@
 import { computed, ref } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import {
-  Connection,
   DataBoard,
   Document,
   Key,
@@ -17,6 +16,7 @@ import {
 import { api } from "../lib/request";
 import { authState } from "../composables/useAuth";
 import ApiCodeSnippetModal from "../components/ApiCodeSnippetModal.vue";
+import BrandLogo from "../components/BrandLogo.vue";
 
 const router = useRouter();
 const route = useRoute();
@@ -37,7 +37,7 @@ async function logout() {
   <div class="console-layout">
     <aside class="console-sidebar" :class="{ collapsed: isCollapsed }">
       <div class="console-brand">
-        <span class="console-logo"><Connection /></span>
+        <BrandLogo class="console-logo" />
         <div v-if="!isCollapsed">
           <strong>Antler Knowledge</strong><span>V2.4.0-CLUSTER</span>
         </div>
@@ -154,15 +154,13 @@ async function logout() {
   border-bottom: 1px solid #f1f5f9;
 }
 .console-logo {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
-  place-items: center;
-  color: #fff;
-  background: #0284c7;
-  border-radius: 8px;
-  font-size: 21px;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+}
+.collapsed .console-brand {
+  justify-content: center;
+  padding: 0;
 }
 .console-brand div {
   display: flex;
@@ -170,6 +168,7 @@ async function logout() {
   flex-direction: column;
 }
 .console-brand strong {
+  color: var(--brand);
   white-space: nowrap;
   font-size: 15px;
 }
@@ -179,6 +178,9 @@ async function logout() {
   font-family: "JetBrains Mono", monospace;
   font-size: 10px;
   letter-spacing: 0.08em;
+}
+.console-brand div span {
+  color: var(--brand-deep);
 }
 .console-brand button {
   margin-left: auto;

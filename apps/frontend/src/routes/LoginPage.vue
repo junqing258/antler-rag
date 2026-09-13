@@ -3,13 +3,13 @@ import { ref } from "vue";
 import {
   ArrowRight,
   Lock,
-  Connection,
   User,
   Key,
 } from "@element-plus/icons-vue";
 import { useRouter } from "vue-router";
 import { api } from "../lib/request";
 import { saveAuth } from "../composables/useAuth";
+import BrandLogo from "../components/BrandLogo.vue";
 
 const router = useRouter();
 const email = ref("");
@@ -39,12 +39,12 @@ async function login() {
 <template>
   <main class="login-page">
     <header class="login-top-brand">
-      <span class="brand-mark"><Connection /></span><strong>ANTLER</strong
+      <BrandLogo class="brand-mark" /><strong>ANTLER</strong
       ><i>/</i><span>Knowledge Core</span>
     </header>
     <section class="login-card">
       <div class="login-heading">
-        <span class="heading-mark"><Connection /></span>
+        <BrandLogo class="heading-mark" />
         <h1>登录 Antler 控制台</h1>
         <span>企业知识库与向量检索管理平台</span>
       </div>
@@ -145,14 +145,8 @@ async function login() {
   font-style: normal;
 }
 .brand-mark {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  color: #fff;
-  background: #006194;
-  border-radius: 4px;
-  font-size: 17px;
+  width: 36px;
+  height: 36px;
 }
 .login-card {
   position: relative;
@@ -173,15 +167,9 @@ async function login() {
   text-align: center;
 }
 .heading-mark {
-  display: grid;
-  width: 40px;
-  height: 40px;
-  place-items: center;
+  width: 64px;
+  height: 64px;
   margin-bottom: 10px;
-  color: #fff;
-  background: #006194;
-  border-radius: 8px;
-  font-size: 23px;
 }
 .login-heading h1 {
   margin: 0 0 5px;

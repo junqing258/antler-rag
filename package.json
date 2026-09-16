@@ -1,5 +1,5 @@
 {
-  "name": "antler-rag-admin",
+  "name": "antler-rag",
   "private": true,
   "packageManager": "pnpm@10.12.1",
   "scripts": {

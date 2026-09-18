@@ -24,6 +24,7 @@ export function parsePositiveInteger(value, flag, { min, max }) {
 export function usage() {
   return `用法：
   node scripts/multi-agent.mjs plan --requirement <需求.md> [--run-id <id>] [--max-rounds 3] [--timeout-seconds 1200]
+  node scripts/multi-agent.mjs review <run-id> [--timeout-seconds 1200]
   node scripts/multi-agent.mjs approve <run-id> --confirm <run-id>
   node scripts/multi-agent.mjs implement <run-id> --confirm <run-id> [--timeout-seconds 1200]
   node scripts/multi-agent.mjs status <run-id>`;

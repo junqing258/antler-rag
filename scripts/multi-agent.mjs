@@ -34,8 +34,9 @@ function markInterrupted(signal) {
   if (!activeWorkflow || activeWorkflow.interrupted) return;
   activeWorkflow.interrupted = true;
   const { runDir, state } = activeWorkflow;
+  const previousPhase = state.phase;
   state.phase = "INTERRUPTED";
-  state.interruption = { at: utcNow(), signal };
+  state.interruption = { at: utcNow(), signal, previous_phase: previousPhase };
   saveState(runDir, state);
   appendEvent(runDir, "interrupted", { signal });
   console.error(`\n已收到 ${signal}，正在停止当前 Agent；运行已标记为 INTERRUPTED。`);
@@ -164,6 +165,63 @@ function approve(options) {
   console.log(`已记录人工确认。实施：node scripts/multi-agent.mjs implement ${options.runId} --confirm ${options.runId}`);
 }
 
+async function review(options) {
+  const runDir = runDirFor(options.runId);
+  const state = readJson(resolve(runDir, "state.json"));
+  const planPath = resolve(runDir, "plan.json");
+  if (!existsSync(planPath)) {
+    throw new WorkflowError("该运行不存在已生成的方案，无法仅重试审核；请重新执行 plan。" );
+  }
+  if (!["FAILED", "REVIEWING", "INTERRUPTED"].includes(state.phase)) {
+    throw new WorkflowError(`当前阶段为 ${state.phase}，不需要单独重试审核。`);
+  }
+  requireCleanRepository(state.repository.base_commit);
+
+  const reviewSchema = resolve(CONFIG, "schemas/review.schema.json");
+  state.phase = "REVIEWING";
+  delete state.failure;
+  saveState(runDir, state);
+  appendEvent(runDir, "review_retry_started", { round: state.round });
+  activeWorkflow = { runDir, state, interrupted: false };
+  try {
+    const reviewOutput = await runProgram(
+      "claude",
+      ["-p", "--permission-mode", "plan", "--permission-prompts", "none", "--output-format", "json", "--json-schema", readFileSync(reviewSchema, "utf8"), reviewPrompt(runDir, state.round)],
+      { timeoutSeconds: options.timeoutSeconds, label: `claude-round-${state.round}-retry`, runDir, signal: workflowAbortController.signal },
+    );
+    const result = validateReview(parseClaudeResult(reviewOutput));
+    writeJson(resolve(runDir, "review.json"), result);
+    writeFileSync(resolve(runDir, "review.md"), renderReview(result), "utf8");
+    appendEvent(runDir, "review_created", { round: state.round, status: result.status, retry: true });
+
+    if (result.status === "APPROVE") {
+      state.phase = "AWAITING_HUMAN_APPROVAL";
+      saveState(runDir, state);
+      console.log(`方案已通过审核：${options.runId}\n阅读：${resolve(runDir, "plan.md")}\n确认：node scripts/multi-agent.mjs approve ${options.runId} --confirm ${options.runId}`);
+      return;
+    }
+    if (result.status === "BLOCKED") {
+      state.phase = "BLOCKED";
+      saveState(runDir, state);
+      console.log(`审核被阻塞：${resolve(runDir, "review.md")}`);
+      return;
+    }
+    state.phase = "REVIEW_CHANGES_REQUESTED";
+    saveState(runDir, state);
+    console.log(`审核要求修改：${resolve(runDir, "review.md")}\n请根据意见创建新的需求运行，或人工修订方案后重新审核。`);
+  } catch (error) {
+    if (!(error instanceof WorkflowInterruptedError) && !activeWorkflow.interrupted) {
+      state.phase = "FAILED";
+      state.failure = { at: utcNow(), message: error.message };
+      saveState(runDir, state);
+      appendEvent(runDir, "failed", { message: error.message });
+    }
+    throw error;
+  } finally {
+    activeWorkflow = undefined;
+  }
+}
+
 async function implement(options) {
   const runDir = runDirFor(options.runId);
   const state = readJson(resolve(runDir, "state.json"));
@@ -228,6 +286,16 @@ async function main(argv = process.argv.slice(2)) {
       requirement: flags["--requirement"],
       runId: flags["--run-id"],
       maxRounds: flags["--max-rounds"] ? parsePositiveInteger(flags["--max-rounds"], "--max-rounds", { min: 1, max: 5 }) : 3,
+      timeoutSeconds: flags["--timeout-seconds"] ? parsePositiveInteger(flags["--timeout-seconds"], "--timeout-seconds", { min: 1, max: 7_200 }) : DEFAULT_TIMEOUT_SECONDS,
+    });
+    return;
+  }
+  if (command === "review") {
+    const [runId, ...flagsInput] = rest;
+    if (!runId || runId.startsWith("--")) throw new WorkflowError("review 需要 run id。");
+    const flags = parseFlags(flagsInput, new Set(["--timeout-seconds"]));
+    await review({
+      runId,
       timeoutSeconds: flags["--timeout-seconds"] ? parsePositiveInteger(flags["--timeout-seconds"], "--timeout-seconds", { min: 1, max: 7_200 }) : DEFAULT_TIMEOUT_SECONDS,
     });
     return;

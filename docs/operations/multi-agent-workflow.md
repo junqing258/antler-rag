@@ -71,6 +71,14 @@ pnpm agents plan \
 
 若审核状态为 `REQUEST_CHANGES`，Codex 最多按 `--max-rounds` 修订方案；`BLOCKED` 会立即停止；`APPROVE` 只使流程进入待人工确认状态。
 
+如果 Codex 已成功生成方案、但 Claude Code 因 CLI 或 Schema 错误而失败，可只重试审核而不再次调用 Codex：
+
+```bash
+pnpm agents review <run-id>
+```
+
+该命令仅接受 `FAILED`、`REVIEWING` 或 `INTERRUPTED` 的运行，且要求已存在 `plan.json`。审核通过后进入人工确认；若仍要求修改，状态会标记为 `REVIEW_CHANGES_REQUESTED`，应由人类收敛意见后创建新的方案运行。
+
 ### 阅读并确认方案
 
 当状态为 `AWAITING_HUMAN_APPROVAL` 时，先阅读运行目录中的 `plan.md` 与 `review.md`。重点确认：
@@ -127,7 +135,7 @@ PLANNING
   → IMPLEMENTED
 ```
 
-另外，`BLOCKED` 表示必须补充需求或外部决策；`MAX_ROUNDS_REACHED` 表示审核持续要求修改，应该由人类收敛方案，而非继续增加轮数。
+另外，`BLOCKED` 表示必须补充需求或外部决策；`MAX_ROUNDS_REACHED` 表示审核持续要求修改，应该由人类收敛方案，而非继续增加轮数。`FAILED` 表示 CLI、Schema 或 Agent 调用错误；`INTERRUPTED` 表示收到中断信号；`REVIEW_CHANGES_REQUESTED` 表示单独重试审核后仍需要方案修改。
 
 ## 常见问题
 

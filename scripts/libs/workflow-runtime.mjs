@@ -1,5 +1,5 @@
-import { execFileSync } from "node:child_process";
-import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { appendFileSync, createWriteStream, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,6 +11,7 @@ export const DEFAULT_TIMEOUT_SECONDS = 1_200;
 const MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 
 export class WorkflowError extends Error {}
+export class WorkflowInterruptedError extends WorkflowError {}
 
 export function utcNow() {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -46,30 +47,67 @@ export function saveState(runDir, state) {
   writeJson(resolve(runDir, "state.json"), state);
 }
 
-export function runProgram(program, args, { timeoutSeconds, label, runDir }) {
-  let stdout = "";
-  let stderr = "";
-  let error;
+export async function runProgram(program, args, { timeoutSeconds, label, runDir, signal }) {
+  if (signal?.aborted) throw new WorkflowInterruptedError(`${label} 已中断。`);
+  const startedAt = Date.now();
+  const stdoutLog = createWriteStream(resolve(runDir, `${label}.stdout.log`), { encoding: "utf8" });
+  const stderrLog = createWriteStream(resolve(runDir, `${label}.stderr.log`), { encoding: "utf8" });
+  const stdoutChunks = [];
+  let stdoutBytes = 0;
+  let timedOut = false;
+  let aborted = signal?.aborted ?? false;
+
+  console.log(`[${utcNow()}] ${label} 已启动。`);
+  const child = spawn(program, args, { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] });
+  const progress = setInterval(() => {
+    const elapsedSeconds = Math.floor((Date.now() - startedAt) / 1_000);
+    console.log(`[${utcNow()}] ${label} 仍在运行（${elapsedSeconds}s）。`);
+  }, 15_000);
+  progress.unref();
+
+  const onAbort = () => {
+    aborted = true;
+    child.kill("SIGTERM");
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    child.kill("SIGTERM");
+  }, timeoutSeconds * 1_000);
+
   try {
-    stdout = execFileSync(program, args, {
-      cwd: ROOT,
-      encoding: "utf8",
-      timeout: timeoutSeconds * 1_000,
-      maxBuffer: MAX_BUFFER_BYTES,
-      stdio: ["ignore", "pipe", "pipe"],
+    const result = await new Promise((resolveResult, reject) => {
+      child.stdout.on("data", (chunk) => {
+        stdoutLog.write(chunk);
+        process.stdout.write(chunk);
+        if (stdoutBytes + chunk.length <= MAX_BUFFER_BYTES) {
+          stdoutChunks.push(chunk);
+          stdoutBytes += chunk.length;
+        }
+      });
+      child.stderr.on("data", (chunk) => {
+        stderrLog.write(chunk);
+        process.stderr.write(chunk);
+      });
+      child.on("error", reject);
+      child.on("close", (code, childSignal) => resolveResult({ code, childSignal }));
     });
-  } catch (caught) {
-    error = caught;
-    stdout = caught.stdout?.toString() ?? "";
-    stderr = caught.stderr?.toString() ?? "";
+
+    if (aborted) throw new WorkflowInterruptedError(`${label} 已中断。`);
+    if (timedOut) throw new WorkflowError(`${label} 执行超时；请查看对应日志。`);
+    if (result.code !== 0) {
+      throw new WorkflowError(`${label} 失败（退出码 ${result.code ?? "未知"}）；请查看对应 stderr 日志。`);
+    }
+    const elapsedSeconds = Math.floor((Date.now() - startedAt) / 1_000);
+    console.log(`[${utcNow()}] ${label} 已完成（${elapsedSeconds}s）。`);
+    return Buffer.concat(stdoutChunks).toString("utf8");
+  } finally {
+    clearInterval(progress);
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", onAbort);
+    stdoutLog.end();
+    stderrLog.end();
   }
-  writeFileSync(resolve(runDir, `${label}.stdout.log`), stdout, "utf8");
-  writeFileSync(resolve(runDir, `${label}.stderr.log`), stderr, "utf8");
-  if (error) {
-    const reason = error.code === "ETIMEDOUT" ? "执行超时" : `退出码 ${error.status ?? "未知"}`;
-    throw new WorkflowError(`${label} 失败（${reason}）；请查看对应 stderr 日志。`);
-  }
-  return stdout;
 }
 
 export function git(args, { check = true } = {}) {

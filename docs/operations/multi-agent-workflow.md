@@ -67,6 +67,8 @@ pnpm agents plan \
 - `state.json` 和 `events.jsonl`：流程状态与审计记录；
 - 每个 CLI 的 stdout/stderr 日志，便于排查失败。
 
+控制台会在每个 Agent 启动、完成以及每 15 秒仍在运行时显示状态，并实时转发子进程输出。按 `Ctrl+C` 会停止当前 Agent，并将运行状态写为 `INTERRUPTED`。
+
 若审核状态为 `REQUEST_CHANGES`，Codex 最多按 `--max-rounds` 修订方案；`BLOCKED` 会立即停止；`APPROVE` 只使流程进入待人工确认状态。
 
 ### 阅读并确认方案

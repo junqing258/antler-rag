@@ -186,6 +186,7 @@ uv run python -m migrate_single_workspace --data-dir /data --dry-run
 
 - [部署说明](docs/operations/deployment.md)
 - [备份、恢复与升级](docs/operations/backup-and-upgrade.md)
+- [Codex 设计 + Claude Code 审核工作流](docs/operations/multi-agent-workflow.md)
 
 ## 许可证
 

@@ -37,6 +37,7 @@ apps/backend/src/antler_rag/static/*
 .codex
 .reasonix
 reasonix.toml
+.agent-runs/
 
 **/__pycache__
 scripts/git_deploy_key

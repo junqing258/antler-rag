@@ -7,6 +7,7 @@
     "build": "pnpm --dir apps/frontend build",
     "test": "pnpm --dir apps/frontend test",
     "lint": "pnpm --dir apps/frontend lint",
-    "format:check": "pnpm --dir apps/frontend format:check"
+    "format:check": "pnpm --dir apps/frontend format:check",
+    "agents": "node scripts/multi-agent.mjs"
   }
 }

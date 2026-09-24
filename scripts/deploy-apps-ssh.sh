@@ -19,6 +19,7 @@ DEPLOY_IMAGE_REPO="${DEPLOY_IMAGE_REPO:-antler-rag/app}"
 DEPLOY_IMAGE_REF="${DEPLOY_IMAGE_REPO}:${DEPLOY_IMAGE_TAG}"
 DEPLOY_PLATFORM="${DEPLOY_PLATFORM:-}"
 DEPLOY_DEBUG="${DEPLOY_DEBUG:-0}"
+DEPLOY_GZIP_LEVEL="${DEPLOY_GZIP_LEVEL:-1}"
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   cat <<EOF
@@ -44,6 +45,9 @@ Docker volume（默认 antler-rag-data）中，不会随镜像更新删除。
   DEPLOY_IMAGE_REPO       镜像名；默认 antler-rag/app
   DEPLOY_PLATFORM         目标平台；为空时从远端 uname 自动识别
   DEPLOY_DEBUG            设为 1 输出调试命令
+  DEPLOY_GZIP_LEVEL       gzip 压缩级别（1-9）；默认 1，以传输速度优先
+
+镜像传输使用 pv 显示实时进度、吞吐率与 ETA。macOS 可通过 brew install pv 安装。
 
 示例：
   cp .env.deploy.example .env.deploy
@@ -78,6 +82,10 @@ log_step() {
   printf '%s\n' "==> $1"
 }
 
+format_mib() {
+  awk -v bytes="$1" 'BEGIN { printf "%.1f MiB", bytes / 1024 / 1024 }'
+}
+
 quote_for_remote_sh() {
   printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
 }
@@ -89,6 +97,10 @@ remote_sh() {
 
 remote_scp() {
   scp "${scp_options[@]}" "$@"
+}
+
+transfer_image() {
+  docker save "$DEPLOY_IMAGE_REF" | pv -f -p -t -e -r -b -s "$image_size_bytes" | gzip "-$DEPLOY_GZIP_LEVEL" | remote_sh "gunzip | docker load"
 }
 
 read_env_file_value() {
@@ -141,6 +153,7 @@ require_command docker
 require_command ssh
 require_command scp
 require_command gzip
+require_command pv
 require_file "$DEPLOY_ENV_FILE"
 require_file "$DEPLOY_COMPOSE_FILE"
 if [[ "$DEPLOY_ENVIRONMENT" != "deploy" ]]; then
@@ -174,8 +187,12 @@ if [[ ! "$DEPLOY_SSH_PORT" =~ ^[0-9]+$ ]] || (( 10#$DEPLOY_SSH_PORT < 1 || 10#$D
   echo "DEPLOY_SSH_PORT 必须是 1 到 65535 之间的端口号：$DEPLOY_SSH_PORT" >&2
   exit 1
 fi
-ssh_options=(-p "$DEPLOY_SSH_PORT")
-scp_options=(-P "$DEPLOY_SSH_PORT")
+if [[ ! "$DEPLOY_GZIP_LEVEL" =~ ^[1-9]$ ]]; then
+  echo "DEPLOY_GZIP_LEVEL 必须是 1 到 9 之间的整数：$DEPLOY_GZIP_LEVEL" >&2
+  exit 1
+fi
+ssh_options=(-p "$DEPLOY_SSH_PORT" -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o Compression=no)
+scp_options=(-P "$DEPLOY_SSH_PORT" -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o Compression=no)
 
 tmp_env_file="$(mktemp)"
 cleanup() {
@@ -216,7 +233,9 @@ remote_scp "$DEPLOY_COMPOSE_FILE" "$DEPLOY_SSH_TARGET:$DEPLOY_REMOTE_DIR/docker-
 remote_scp "$tmp_env_file" "$DEPLOY_SSH_TARGET:$DEPLOY_REMOTE_DIR/.env"
 
 log_step "传输镜像"
-docker save "$DEPLOY_IMAGE_REF" | gzip | remote_sh "gunzip | docker load"
+image_size_bytes="$(docker image inspect --format '{{.Size}}' "$DEPLOY_IMAGE_REF")"
+log_step "镜像层大小约 $(format_mib "$image_size_bytes")；流式压缩、传输并导入远端 Docker"
+transfer_image
 
 log_step "启动服务并等待健康检查"
 remote_sh "cd $(quote_for_remote_sh "$DEPLOY_REMOTE_DIR") && docker compose -f docker-compose.remote.yml --env-file .env up -d --force-recreate --remove-orphans --wait --wait-timeout 180"

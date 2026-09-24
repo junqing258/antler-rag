@@ -6,7 +6,21 @@ from pathlib import Path
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-REPOSITORY_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
+
+def find_repository_env_file(source_file: Path) -> Path | None:
+    """Find a development `.env` without assuming a fixed source-tree depth.
+
+    Production containers receive configuration through their process environment,
+    so they intentionally return ``None`` when no `.env` is present.
+    """
+    for parent in source_file.resolve().parents:
+        env_file = parent / ".env"
+        if env_file.is_file():
+            return env_file
+    return None
+
+
+REPOSITORY_ENV_FILE = find_repository_env_file(Path(__file__))
 
 
 class Settings(BaseSettings):

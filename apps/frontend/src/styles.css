@@ -159,9 +159,6 @@ select {
     box-shadow 0.2s;
 }
 
-.panel + .panel {
-  margin-top: 20px;
-}
 
 .panel-header {
   display: flex;

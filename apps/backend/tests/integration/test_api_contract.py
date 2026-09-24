@@ -46,3 +46,18 @@ def test_retrieve_reports_when_requested_reranker_is_not_configured(tmp_path: Pa
 
     assert response.status_code == 503
     assert response.json()["code"] == "reranker_unavailable"
+
+
+def test_vector_endpoint_contract_is_unchanged_after_retrieval_service_refactor(tmp_path: Path) -> None:
+    settings = Settings(data_dir=tmp_path, bootstrap_admin_email="admin@example.com", bootstrap_admin_password="a-long-bootstrap-password")
+    with TestClient(create_app(settings)) as client:
+        headers = login(client)
+        knowledge_base = client.post("/api/v1/knowledge-bases", json={"name": "Global"}, headers=headers).json()
+        response = client.post(
+            "/api/v1/retrieve",
+            json={"knowledge_base_id": knowledge_base["id"], "query": "test"},
+            headers=headers,
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"results": []}

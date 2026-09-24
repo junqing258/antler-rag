@@ -114,6 +114,11 @@ just docker-build
 | `RAG_EMBEDDING_DIMENSIONS` | 模型默认值 | 可选的 embedding 维数；使用 `text-embedding-v4` 时推荐固定为 `1024`。 |
 | `RAG_RERANKER_BASE_URL` | 无 | 可选的 Hugging Face Text Embeddings Inference（TEI）CrossEncoder 服务地址；服务可加载 `BAAI/bge-reranker-large`。 |
 | `RAG_RERANKER_API_KEY` | 无 | 可选的 TEI 服务 Bearer Token。 |
+| `RAG_AGENTIC_ENABLED` | `false` | 是否启用受限 Agentic RAG 端点；默认关闭。 |
+| `RAG_AGENT_MAX_STEPS` | `6` | 单次 Agent 请求最多执行的受控步骤数。 |
+| `RAG_AGENT_MAX_SUBQUERIES` | `3` | 单次 Agent 请求最多使用的检索子查询数。 |
+| `RAG_AGENT_MAX_LLM_CALLS` | `5` | 单次 Agent 请求允许的 LLM 调用上限。 |
+| `RAG_AGENT_TIMEOUT_SECONDS` | `30` | Agent 调用上游模型的超时秒数。 |
 
 未配置 `RAG_CHAT_MODEL` 时，`/api/v1/chat` 不会生成回答，但仍会返回召回的来源片段，方便 Agent 自行处理上下文。
 
@@ -134,7 +139,7 @@ just docker-build
 | 只读成员 | 查看文档目录，执行检索和问答。 |
 | API Key | 按 scope 调用数据 API，不能访问管理接口。 |
 
-API Key 可授予的 scope 为 `retrieve`、`chat`、`documents:read`、`documents:write`、`documents:delete`。浏览器会话使用 `Authorization: Bearer <token>`；API Key 使用 `X-API-Key: <key>`。不需要 `X-Tenant-ID`。
+API Key 可授予的 scope 为 `retrieve`、`chat`、`agentic:query`、`documents:read`、`documents:write`、`documents:delete`。浏览器会话使用 `Authorization: Bearer <token>`；API Key 使用 `X-API-Key: <key>`。不需要 `X-Tenant-ID`。
 
 ## API
 
@@ -148,7 +153,7 @@ API Key 可授予的 scope 为 `retrieve`、`chat`、`documents:read`、`documen
 | 认证 | `POST /api/v1/auth/login`、`POST /api/v1/auth/logout`、`POST /api/v1/auth/change-password` |
 | 用户 | `/api/v1/users` |
 | 知识库与文档 | `/api/v1/knowledge-bases`、`/api/v1/knowledge-bases/{knowledge_base_id}/documents` |
-| 检索与问答 | `POST /api/v1/retrieve`、`POST /api/v1/chat` |
+| 检索与问答 | `POST /api/v1/retrieve`、`POST /api/v1/chat`、`POST /api/v1/agentic-rag`（显式开启后） |
 
 使用 API Key 检索的示例：
 

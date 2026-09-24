@@ -1,0 +1,5 @@
+{"id":"single-hop","category":"single_hop","query":"退款期限是多少天？","expected_chunk_ids":["policy:0"],"expected_citation_chunk_ids":["policy:0"]}
+{"id":"cross-document","category":"cross_document","query":"谁批准例外退款？","expected_chunk_ids":["policy:1","roles:0"],"expected_citation_chunk_ids":["policy:1","roles:0"]}
+{"id":"multi-hop","category":"multi_hop","query":"高级审批人属于哪个团队？","expected_chunk_ids":["roles:1","teams:0"],"expected_citation_chunk_ids":["roles:1","teams:0"]}
+{"id":"no-answer","category":"no_answer","query":"总部停车费是多少？","expected_chunk_ids":[],"expected_citation_chunk_ids":[]}
+{"id":"entity-ambiguity","category":"entity_ambiguity","query":"Mercury 的负责人是谁？","expected_chunk_ids":["mercury-project:0","mercury-product:0"],"expected_citation_chunk_ids":["mercury-project:0","mercury-product:0"]}

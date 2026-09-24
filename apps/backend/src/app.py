@@ -22,14 +22,15 @@ from config import Settings
 from db import Database
 from db.repository import now
 from documents import UnsupportedDocument, extract_text
-from rag import RAGStore, RetrievedChunk
+from rag import Evidence, RAGStore, RetrievalService, RetrievedChunk
+from rag.agentic import AgentService
 from rag.store import RerankerError, upload_path
 
 password_hash = PasswordHash.recommended()
 ROLES = {"admin", "editor", "viewer"}
 WRITE_ROLES = {"admin", "editor"}
 SCOPES = {"retrieve", "chat", "documents:read",
-          "documents:write", "documents:delete"}
+          "documents:write", "documents:delete", "agentic:query"}
 
 logger = logging.getLogger("antler_rag")
 if not logger.handlers:
@@ -112,6 +113,14 @@ class ChatRequest(RetrieveRequest):
     system_prompt: str | None = Field(default=None, max_length=5000)
 
 
+class AgenticRagRequest(BaseModel):
+    knowledge_base_id: str
+    message: str = Field(min_length=1, max_length=10_000)
+    top_k: int = Field(default=5, ge=1, le=20)
+    mode: Literal["auto", "vector", "keyword", "graph", "hybrid"] = "auto"
+    include_trace: bool = False
+
+
 class Principal(BaseModel):
     actor_type: Literal["user", "api_key"]
     actor_id: str
@@ -132,7 +141,7 @@ def public_key(key: dict[str, Any]) -> dict[str, Any]:
     return item
 
 
-def chunk_payload(chunk: RetrievedChunk) -> dict[str, str | float | int | None]:
+def chunk_payload(chunk: RetrievedChunk | Evidence) -> dict[str, str | float | int | None]:
     return {"chunk_id": chunk.chunk_id, "document_id": chunk.document_id, "knowledge_base_id": chunk.knowledge_base_id, "filename": chunk.filename, "content": chunk.content, "distance": chunk.distance, "chunk_index": chunk.chunk_index, "rerank_score": chunk.rerank_score}
 
 
@@ -151,8 +160,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if settings.bootstrap_admin_email and settings.bootstrap_admin_password:
             database.bootstrap_admin(settings.bootstrap_admin_email, password_hash.hash(
                 settings.bootstrap_admin_password))
-        app.state.settings, app.state.db, app.state.store = settings, database, RAGStore(
-            settings)
+        app.state.settings, app.state.db, app.state.store = settings, database, RAGStore(settings)
+        app.state.retrieval = RetrievalService.from_store(app.state.store)
+        app.state.agentic = AgentService(app.state.retrieval, settings)
         try:
             yield
         finally:
@@ -185,6 +195,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     def db() -> Database: return app.state.db
     def store() -> RAGStore: return app.state.store
+    def retrieval() -> RetrievalService: return app.state.retrieval
+    def agentic() -> AgentService: return app.state.agentic
 
     def session_principal(authorization: Annotated[str | None, Header()] = None, database: Database = Depends(db)) -> Principal:
         if not authorization or not authorization.startswith("Bearer "):
@@ -511,19 +523,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         audit(request, principal, "delete", "document", document_id)
 
     @app.post("/api/v1/retrieve")
-    def retrieve(payload: RetrieveRequest, _: Principal = Depends(access("retrieve", ROLES)), database: Database = Depends(db), rag: RAGStore = Depends(store)) -> dict[str, Any]:
+    def retrieve(payload: RetrieveRequest, _: Principal = Depends(access("retrieve", ROLES)), database: Database = Depends(db), service: RetrievalService = Depends(retrieval)) -> dict[str, Any]:
         validate_retrieve(payload, database)
         try:
-            chunks = rag.retrieve(knowledge_base_id=payload.knowledge_base_id, query=payload.query, top_k=payload.top_k, document_ids=payload.document_ids, score_threshold=payload.score_threshold, rerank=payload.rerank)
+            chunks = service.retrieve(knowledge_base_id=payload.knowledge_base_id, query=payload.query, top_k=payload.top_k, document_ids=payload.document_ids, score_threshold=payload.score_threshold, rerank=payload.rerank)
         except RerankerError as error:
             raise APIError("reranker_unavailable", str(error), 503) from error
         return {"results": [chunk_payload(chunk) for chunk in chunks]}
 
     @app.post("/api/v1/chat")
-    async def chat(payload: ChatRequest, request: Request, _: Principal = Depends(access("chat", ROLES)), database: Database = Depends(db), rag: RAGStore = Depends(store)) -> dict[str, Any]:
+    async def chat(payload: ChatRequest, request: Request, _: Principal = Depends(access("chat", ROLES)), database: Database = Depends(db), service: RetrievalService = Depends(retrieval)) -> dict[str, Any]:
         validate_retrieve(payload, database)
         try:
-            chunks = rag.retrieve(knowledge_base_id=payload.knowledge_base_id,
+            chunks = service.retrieve(knowledge_base_id=payload.knowledge_base_id,
                                   query=payload.query, top_k=payload.top_k, document_ids=payload.document_ids,
                                   score_threshold=payload.score_threshold, rerank=payload.rerank)
         except RerankerError as error:
@@ -551,6 +563,51 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         logger.info("chat_request_completed request_id=%s model=%s duration_ms=%d",
                     request.state.request_id, settings.chat_model, (perf_counter() - started) * 1000)
         return {"answer": answer, "sources": sources}
+
+    @app.post("/api/v1/agentic-rag")
+    async def agentic_rag(payload: AgenticRagRequest, request: Request, principal: Principal = Depends(access("agentic:query", ROLES)), database: Database = Depends(db), agent: AgentService = Depends(agentic)) -> dict[str, Any]:
+        validate_retrieve(
+            RetrieveRequest(
+                knowledge_base_id=payload.knowledge_base_id,
+                query=payload.message,
+                top_k=payload.top_k,
+            ),
+            database,
+        )
+        if not settings.agentic_enabled:
+            raise APIError("feature_disabled", "Agentic retrieval is disabled", 503)
+        if payload.mode not in {"auto", "vector"}:
+            raise APIError("feature_disabled", f"Retrieval mode '{payload.mode}' is unavailable", 503)
+        result = await agent.answer(
+            knowledge_base_id=payload.knowledge_base_id,
+            message=payload.message,
+            top_k=payload.top_k,
+            mode=payload.mode,
+        )
+        response: dict[str, Any] = {
+            "answer": result.answer,
+            "sources": [chunk_payload(item) for item in result.evidence],
+            "retrieval_mode": "vector",
+        }
+        if result.detail:
+            response["detail"] = result.detail
+        if payload.include_trace:
+            response["trace_id"] = str(uuid4())
+            response["trace"] = {
+                "steps": [
+                    {
+                        "name": step.name,
+                        "tool": step.tool,
+                        "candidate_count": step.candidate_count,
+                        "duration_ms": step.duration_ms,
+                        "error_code": step.error_code,
+                        "evidence_ids": list(step.evidence_ids),
+                    }
+                    for step in result.trace
+                ]
+            }
+        audit(request, principal, "agentic_query", "knowledge_base", payload.knowledge_base_id)
+        return response
 
     app.mount("/", StaticFiles(directory=Path(__file__).parent /
               "static", html=True), name="frontend")

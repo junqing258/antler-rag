@@ -1,6 +1,6 @@
 # Antler RAG：Agentic RAG 与 Graph RAG 实施计划
 
-> 状态：Draft（已依据当前仓库校正）
+> 状态：In progress（阶段 0、阶段 1 和阶段 2 的后端基础已实现；Graph RAG 尚未开始）
 > 范围：在保持单容器、单写入进程和现有 `/api/v1/retrieve`、`/api/v1/chat` 合约不变的前提下，分阶段交付受控 Agentic RAG 与可追溯的 Graph RAG。
 
 ## 1. 当前基线与边界

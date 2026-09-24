@@ -184,6 +184,10 @@ onMounted(load);
                 <el-tag type="success" size="small" effect="plain">chat</el-tag>
                 <span>问答对话</span>
               </el-checkbox>
+              <el-checkbox label="agentic:query">
+                <el-tag type="success" size="small" effect="plain">agentic:query</el-tag>
+                <span>受限 Agent 问答</span>
+              </el-checkbox>
               <el-checkbox label="documents:read">
                 <el-tag type="info" size="small" effect="plain"
                   >documents:read</el-tag

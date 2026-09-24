@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     # Leave unset to keep the lightweight vector-only deployment.
     reranker_base_url: str | None = None
     reranker_api_key: str | None = None
+    agentic_enabled: bool = False
+    agent_max_steps: int = Field(default=6, ge=4, le=12)
+    agent_max_subqueries: int = Field(default=3, ge=1, le=6)
+    agent_max_llm_calls: int = Field(default=5, ge=2, le=10)
+    agent_timeout_seconds: int = Field(default=30, ge=1, le=120)
 
     @model_validator(mode="after")
     def validate_bootstrap(self) -> Settings:

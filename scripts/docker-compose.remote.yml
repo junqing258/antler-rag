@@ -1,0 +1,28 @@
+services:
+  antler-rag:
+    image: ${RAG_IMAGE:?RAG_IMAGE is required}
+    container_name: antler-rag
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      RAG_DATA_DIR: /data
+      RAG_ENVIRONMENT: production
+    volumes:
+      - rag-data:/data
+    ports:
+      - "${RAG_WEB_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        - CMD
+        - /app/.venv/bin/python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3).close()"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+volumes:
+  rag-data:
+    name: ${RAG_DATA_VOLUME:-antler-rag-data}

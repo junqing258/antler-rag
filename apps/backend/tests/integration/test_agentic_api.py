@@ -11,6 +11,7 @@ def test_agentic_endpoint_is_disabled_by_default(tmp_path: Path) -> None:
         data_dir=tmp_path,
         bootstrap_admin_email="admin@example.com",
         bootstrap_admin_password="a-long-bootstrap-password",
+        agentic_enabled=False,
     )
     with TestClient(create_app(settings)) as client:
         login = client.post(
@@ -36,6 +37,7 @@ def test_agentic_endpoint_requires_its_dedicated_api_key_scope(tmp_path: Path) -
         data_dir=tmp_path,
         bootstrap_admin_email="admin@example.com",
         bootstrap_admin_password="a-long-bootstrap-password",
+        agentic_enabled=False,
     )
     with TestClient(create_app(settings)) as client:
         login = client.post(

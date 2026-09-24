@@ -16,7 +16,7 @@ from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, Resp
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pwdlib import PasswordHash
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, model_validator
 
 from config import Settings
 from db import Database
@@ -24,13 +24,15 @@ from db.repository import now
 from documents import UnsupportedDocument, extract_text
 from rag import Evidence, RAGStore, RetrievalService, RetrievedChunk
 from rag.agentic import AgentService
+from rag.graph_build import GraphBuildService
+from rag.graph_store import GraphStore
 from rag.store import RerankerError, upload_path
 
 password_hash = PasswordHash.recommended()
 ROLES = {"admin", "editor", "viewer"}
 WRITE_ROLES = {"admin", "editor"}
 SCOPES = {"retrieve", "chat", "documents:read",
-          "documents:write", "documents:delete", "agentic:query"}
+          "documents:write", "documents:delete", "agentic:query", "graph:read"}
 
 logger = logging.getLogger("antler_rag")
 if not logger.handlers:
@@ -121,6 +123,27 @@ class AgenticRagRequest(BaseModel):
     include_trace: bool = False
 
 
+class GraphRebuildRequest(BaseModel):
+    document_ids: list[str] | None = Field(default=None, min_length=1, max_length=50)
+    all_documents: bool = False
+
+    @model_validator(mode="after")
+    def select_documents_once(self) -> GraphRebuildRequest:
+        if bool(self.document_ids) == self.all_documents:
+            raise ValueError("Specify exactly one of document_ids or all_documents=true")
+        if self.document_ids and len(set(self.document_ids)) != len(self.document_ids):
+            raise ValueError("document_ids must be unique")
+        return self
+
+
+class GraphSearchRequest(BaseModel):
+    knowledge_base_id: str
+    query: str = Field(min_length=1, max_length=10_000)
+    top_k: int = Field(default=5, ge=1, le=20)
+    document_ids: list[str] | None = Field(default=None, max_length=100)
+    max_hops: Literal[1, 2] = 1
+
+
 class Principal(BaseModel):
     actor_type: Literal["user", "api_key"]
     actor_id: str
@@ -163,6 +186,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.settings, app.state.db, app.state.store = settings, database, RAGStore(settings)
         app.state.retrieval = RetrievalService.from_store(app.state.store)
         app.state.agentic = AgentService(app.state.retrieval, settings)
+        app.state.graph_store = GraphStore(database)
+        app.state.graph_build = GraphBuildService(database, app.state.store, app.state.graph_store, settings)
         try:
             yield
         finally:
@@ -197,6 +222,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def store() -> RAGStore: return app.state.store
     def retrieval() -> RetrievalService: return app.state.retrieval
     def agentic() -> AgentService: return app.state.agentic
+    def graph_store() -> GraphStore: return app.state.graph_store
+    def graph_build() -> GraphBuildService: return app.state.graph_build
 
     def session_principal(authorization: Annotated[str | None, Header()] = None, database: Database = Depends(db)) -> Principal:
         if not authorization or not authorization.startswith("Bearer "):
@@ -270,6 +297,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/health/ready")
     def ready(database: Database = Depends(db), rag: RAGStore = Depends(
         store)) -> dict[str, str]: database.one("SELECT 1"); rag.healthy(); return {"status": "ok"}
+
+    @app.get("/api/v1/features")
+    def features(_: Principal = Depends(access("retrieve", ROLES))) -> dict[str, object]:
+        graph_ready = bool(settings.graph_extractor_model and settings.llm_base_url)
+        agent_ready = bool(settings.llm_base_url and settings.chat_model)
+        return {"modes": {"vector": {"enabled": True, "ready": True, "reason": None}, "keyword": {"enabled": False, "ready": False, "reason": "feature_disabled"}, "graph": {"enabled": settings.graph_enabled, "ready": graph_ready, "reason": None if settings.graph_enabled and graph_ready else ("not_configured" if settings.graph_enabled else "feature_disabled")}, "hybrid": {"enabled": False, "ready": False, "reason": "feature_disabled"}, "agentic": {"enabled": settings.agentic_enabled, "ready": agent_ready, "reason": None if settings.agentic_enabled and agent_ready else ("not_configured" if settings.agentic_enabled else "feature_disabled")}}}
 
     @app.post("/api/v1/auth/login")
     def login(payload: LoginRequest, request: Request, database: Database = Depends(db)) -> dict[str, Any]:
@@ -395,12 +428,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return database.knowledge_base(knowledge_base_id) or {}
 
     @app.delete("/api/v1/knowledge-bases/{knowledge_base_id}", status_code=202)
-    def delete_knowledge_base(knowledge_base_id: str, request: Request, principal: Principal = Depends(access(roles=WRITE_ROLES)), database: Database = Depends(db), rag: RAGStore = Depends(store)) -> dict[str, str]:
+    def delete_knowledge_base(knowledge_base_id: str, request: Request, principal: Principal = Depends(access(roles=WRITE_ROLES)), database: Database = Depends(db), rag: RAGStore = Depends(store), graph: GraphStore = Depends(graph_store)) -> dict[str, str]:
         if not database.knowledge_base(knowledge_base_id):
             raise APIError("not_found", "Knowledge base was not found", 404)
         database.set_knowledge_base_status(knowledge_base_id, "deleting")
         try:
             for document in database.documents(knowledge_base_id):
+                graph.cleanup_document(knowledge_base_id=knowledge_base_id, document_id=document["id"])
                 rag.delete_document(knowledge_base_id, document["id"])
                 upload_path(settings.uploads_dir, knowledge_base_id,
                             document["stored_filename"]).unlink(missing_ok=True)
@@ -431,7 +465,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"items": database.documents(knowledge_base_id)}
 
     @app.post("/api/v1/knowledge-bases/{knowledge_base_id}/documents", status_code=201)
-    async def upload_documents(knowledge_base_id: str, files: Annotated[list[UploadFile], File()], request: Request, principal: Principal = Depends(access("documents:write", WRITE_ROLES)), database: Database = Depends(db), rag: RAGStore = Depends(store)) -> dict[str, Any]:
+    async def upload_documents(knowledge_base_id: str, files: Annotated[list[UploadFile], File()], request: Request, principal: Principal = Depends(access("documents:write", WRITE_ROLES)), database: Database = Depends(db), rag: RAGStore = Depends(store), graph: GraphStore = Depends(graph_store)) -> dict[str, Any]:
         kb = database.knowledge_base(knowledge_base_id, True)
         if not kb:
             raise APIError("not_found", "Knowledge base was not found", 404)
@@ -464,6 +498,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     filename, content), chunk_size=kb["chunk_size"], chunk_overlap=kb["chunk_overlap"], digest=digest)
                 database.set_document_status(
                     knowledge_base_id, document["id"], "ready", chunks)
+                graph.mark_not_built(
+                    knowledge_base_id=knowledge_base_id,
+                    document_id=document["id"],
+                    source_sha256=digest,
+                )
                 indexed.append(database.document(
                     knowledge_base_id, document["id"]) or {})
                 audit(request, principal, "create", "document", document["id"])
@@ -504,13 +543,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return document
 
     @app.delete("/api/v1/knowledge-bases/{knowledge_base_id}/documents/{document_id}", status_code=204)
-    def delete_document(knowledge_base_id: str, document_id: str, request: Request, principal: Principal = Depends(access("documents:delete", WRITE_ROLES)), database: Database = Depends(db), rag: RAGStore = Depends(store)) -> None:
+    def delete_document(knowledge_base_id: str, document_id: str, request: Request, principal: Principal = Depends(access("documents:delete", WRITE_ROLES)), database: Database = Depends(db), rag: RAGStore = Depends(store), graph: GraphStore = Depends(graph_store)) -> None:
         document = database.document(knowledge_base_id, document_id)
         if not document:
             raise APIError("not_found", "Document was not found", 404)
         database.set_document_status(
             knowledge_base_id, document_id, "deleting")
         try:
+            graph.cleanup_document(knowledge_base_id=knowledge_base_id, document_id=document_id)
             rag.delete_document(knowledge_base_id, document_id)
             upload_path(settings.uploads_dir, knowledge_base_id,
                         document["stored_filename"]).unlink(missing_ok=True)
@@ -608,6 +648,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         audit(request, principal, "agentic_query", "knowledge_base", payload.knowledge_base_id)
         return response
+
+    @app.post("/api/v1/knowledge-bases/{knowledge_base_id}/graph/rebuild")
+    async def rebuild_graph(knowledge_base_id: str, payload: GraphRebuildRequest, request: Request, principal: Principal = Depends(administrator), database: Database = Depends(db), builder: GraphBuildService = Depends(graph_build)) -> dict[str, object]:
+        if not settings.graph_enabled:
+            raise APIError("feature_disabled", "Graph retrieval is disabled", 503)
+        if not database.knowledge_base(knowledge_base_id, True):
+            raise APIError("not_found", "Knowledge base was not found", 404)
+        document_ids = [item["id"] for item in database.documents(knowledge_base_id) if item["status"] == "ready"] if payload.all_documents else payload.document_ids or []
+        if len(document_ids) > settings.graph_rebuild_max_documents:
+            raise APIError("rebuild_limit_exceeded", "Too many documents selected", 422)
+        for document_id in document_ids:
+            if not database.document(knowledge_base_id, document_id):
+                raise APIError("not_found", "Document was not found", 404)
+        try:
+            result = await builder.rebuild(knowledge_base_id=knowledge_base_id, document_ids=document_ids, requested_by=principal.user_id)
+        except ValueError as error:
+            raise APIError("graph_not_configured", str(error), 503) from error
+        audit(request, principal, "graph_rebuild", "knowledge_base", knowledge_base_id)
+        return result
+
+    @app.get("/api/v1/knowledge-bases/{knowledge_base_id}/graph/status")
+    def graph_status(knowledge_base_id: str, _: Principal = Depends(access("graph:read", ROLES)), database: Database = Depends(db), graph: GraphStore = Depends(graph_store)) -> dict[str, object]:
+        if not database.knowledge_base(knowledge_base_id, True):
+            raise APIError("not_found", "Knowledge base was not found", 404)
+        return {"documents": graph.document_states(knowledge_base_id)}
+
+    @app.post("/api/v1/graph/search")
+    def graph_search(payload: GraphSearchRequest, _: Principal = Depends(access("graph:read", ROLES)), database: Database = Depends(db), graph: GraphStore = Depends(graph_store)) -> dict[str, object]:
+        validate_retrieve(RetrieveRequest(knowledge_base_id=payload.knowledge_base_id, query=payload.query, top_k=payload.top_k, document_ids=payload.document_ids), database)
+        if not settings.graph_enabled:
+            raise APIError("feature_disabled", "Graph retrieval is disabled", 503)
+        rows = graph.search(knowledge_base_id=payload.knowledge_base_id, query=payload.query, top_k=payload.top_k)
+        return {"results": [{"chunk_id": row["chunk_id"], "document_id": row["document_id"], "knowledge_base_id": payload.knowledge_base_id, "content": f"{row['subject']} {row['predicate']} {row['object']}", "source_type": "graph", "score": row["confidence"], "graph_path": [row["subject"], row["predicate"], row["object"]]} for row in rows]}
 
     app.mount("/", StaticFiles(directory=Path(__file__).parent /
               "static", html=True), name="frontend")

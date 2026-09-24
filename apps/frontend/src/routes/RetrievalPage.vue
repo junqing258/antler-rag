@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import {
   ChatDotRound,
@@ -21,11 +21,16 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { api } from "../lib/request";
 import ApiCodeSnippetModal from "../components/ApiCodeSnippetModal.vue";
+import { authState } from "../composables/useAuth";
 
 const kbs = ref<any[]>([]);
 const kb = ref("");
 const query = ref("");
-const mode = ref<"retrieve" | "chat">("retrieve");
+const mode = ref<"retrieve" | "chat" | "agentic" | "graph">("retrieve");
+const features = ref<any>({ modes: {} });
+const graphStates = ref<any[]>([]);
+const rebuilding = ref(false);
+const isAdmin = computed(() => authState.user?.role === "admin");
 const topK = ref(5);
 const threshold = ref(0.65);
 const rerank = ref(false);
@@ -44,7 +49,7 @@ const renderedAnswer = computed(() =>
 );
 onMounted(async () => {
   try {
-    kbs.value = (await api<any>("/api/v1/knowledge-bases")).items || [];
+    [kbs.value, features.value] = [(await api<any>("/api/v1/knowledge-bases")).items || [], await api<any>("/api/v1/features")];
     const preset = route.query.kb;
     kb.value =
       preset && kbs.value.some((item) => item.id === preset)
@@ -54,6 +59,19 @@ onMounted(async () => {
     error.value = e.message;
   }
 });
+watch(kb, async (knowledgeBaseId) => {
+  if (!knowledgeBaseId || !features.value.modes?.graph?.enabled) return;
+  try { graphStates.value = (await api<any>(`/api/v1/knowledge-bases/${knowledgeBaseId}/graph/status`)).documents || []; } catch { graphStates.value = []; }
+});
+async function rebuildGraph() {
+  if (!kb.value) return;
+  rebuilding.value = true;
+  try {
+    await api(`/api/v1/knowledge-bases/${kb.value}/graph/rebuild`, { method: "POST", body: JSON.stringify({ all_documents: true }) });
+    graphStates.value = (await api<any>(`/api/v1/knowledge-bases/${kb.value}/graph/status`)).documents || [];
+    ElMessage.success("图谱重建已完成");
+  } catch (e: any) { error.value = e.message || "图谱重建失败"; } finally { rebuilding.value = false; }
+}
 async function executeSearch() {
   if (!kb.value || !query.value.trim()) return;
   loading.value = true;
@@ -74,6 +92,13 @@ async function executeSearch() {
         }),
       });
       results.value = res.results || [];
+    } else if (mode.value === "graph") {
+      const res = await api<any>("/api/v1/graph/search", { method: "POST", body: JSON.stringify({ knowledge_base_id: kb.value, query: query.value, top_k: topK.value }) });
+      results.value = res.results || [];
+    } else if (mode.value === "agentic") {
+      const res = await api<any>("/api/v1/agentic-rag", { method: "POST", body: JSON.stringify({ knowledge_base_id: kb.value, message: query.value, top_k: topK.value, include_trace: true }) });
+      chatAnswer.value = res.answer || res.detail || "收到召回结果：";
+      chatSources.value = res.sources || [];
     } else {
       const res = await api<any>("/api/v1/chat", {
         method: "POST",
@@ -155,6 +180,10 @@ function useExample(text: string) {
               :value="item.id"
           /></el-select>
           <p class="cluster-note">Cluster Node: <b>local-chroma-01</b></p>
+          <div v-if="features.modes?.graph?.enabled" class="cluster-note">
+            图谱状态：<b>{{ graphStates.some((item) => item.status === 'ready') ? '可查询' : '尚未构建' }}</b>
+            <el-button v-if="isAdmin" link type="primary" :loading="rebuilding" @click="rebuildGraph">重建图谱</el-button>
+          </div>
           <div class="kb-stats">
             <div><small>文档总数</small><b>已连接</b></div>
             <div>
@@ -209,6 +238,8 @@ function useExample(text: string) {
             >
               RAG 问答<br />(Chat)
             </button>
+            <button v-if="features.modes?.agentic?.enabled" :class="{ active: mode === 'agentic' }" @click="mode = 'agentic'">受控 RAG<br />（Agentic）</button>
+            <button v-if="features.modes?.graph?.enabled && features.modes?.graph?.ready" :class="{ active: mode === 'graph' }" @click="mode = 'graph'">图谱检索</button>
           </div>
           <div class="topk-row">
             <div>
@@ -282,7 +313,7 @@ function useExample(text: string) {
             ><button>{ } JSON</button>
           </footer>
         </article>
-        <template v-if="mode === 'retrieve' && results.length"
+        <template v-if="(mode === 'retrieve' || mode === 'graph') && results.length"
           ><article
             v-for="(result, index) in results"
             :key="result.chunk_id || index"
@@ -325,7 +356,7 @@ function useExample(text: string) {
           </article></template
         >
         <template
-          v-else-if="mode === 'chat' && (chatAnswer || chatSources.length)"
+          v-else-if="(mode === 'chat' || mode === 'agentic') && (chatAnswer || chatSources.length)"
           ><article class="chat-answer">
             <header>
               <h2>

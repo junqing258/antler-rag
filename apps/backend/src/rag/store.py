@@ -32,6 +32,17 @@ class RetrievedChunk:
     rerank_score: float | None = None
 
 
+@dataclass(frozen=True)
+class IndexedChunk:
+    """The exact text and ID accepted by Chroma during document indexing."""
+
+    chunk_id: str
+    document_id: str
+    knowledge_base_id: str
+    chunk_index: int
+    content: str
+
+
 class RerankerError(RuntimeError):
     """Raised when a requested reranker cannot be used."""
 
@@ -249,6 +260,26 @@ class RAGStore:
         payload = self.collection.get(where=self._where(knowledge_base_id, [document_id]), include=[])
         if payload.get("ids"):
             self.collection.delete(ids=payload["ids"])
+
+    def document_chunks(self, knowledge_base_id: str, document_id: str) -> list[IndexedChunk]:
+        """Read the public Chroma records, never re-chunking source content."""
+        payload = self.collection.get(
+            where=self._where(knowledge_base_id, [document_id]),
+            include=["documents", "metadatas"],
+        )
+        chunks = [
+            IndexedChunk(
+                chunk_id=chunk_id,
+                document_id=str(metadata["document_id"]),
+                knowledge_base_id=str(metadata["knowledge_base_id"]),
+                chunk_index=int(metadata["chunk_index"]),
+                content=content,
+            )
+            for chunk_id, content, metadata in zip(
+                payload.get("ids", []), payload.get("documents", []), payload.get("metadatas", []), strict=True
+            )
+        ]
+        return sorted(chunks, key=lambda chunk: chunk.chunk_index)
 
     def delete_knowledge_base(self, knowledge_base_id: str) -> None:
         payload = self.collection.get(where=self._where(knowledge_base_id), include=[])

@@ -61,6 +61,13 @@ class Settings(BaseSettings):
     agent_max_subqueries: int = Field(default=3, ge=1, le=6)
     agent_max_llm_calls: int = Field(default=5, ge=2, le=10)
     agent_timeout_seconds: int = Field(default=30, ge=1, le=120)
+    graph_enabled: bool = False
+    graph_extractor_model: str | None = None
+    graph_extractor_version: str = Field(default="v1", min_length=1, max_length=80)
+    graph_min_confidence: float = Field(default=0.7, ge=0, le=1)
+    graph_max_chunks_per_document: int = Field(default=20, ge=1, le=200)
+    graph_rebuild_max_documents: int = Field(default=10, ge=1, le=50)
+    graph_rebuild_timeout_seconds: int = Field(default=30, ge=1, le=300)
 
     @model_validator(mode="after")
     def validate_bootstrap(self) -> Settings:

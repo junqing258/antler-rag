@@ -67,7 +67,7 @@ def test_v2_migrates_multiple_default_knowledge_bases_and_revokes_credentials(tm
         conn.execute("INSERT INTO tenant_api_keys VALUES('key','t1','key','prefix','hash','[\"retrieve\"]',NULL,NULL,'u',NULL,'now')")
         conn.execute("INSERT INTO sessions VALUES('session','u','session-hash','2999-01-01T00:00:00+00:00',NULL,'now')")
     applied = legacy.migrate()
-    assert applied == [2]
+    assert applied == [2, 3]
     assert [kb["name"] for kb in legacy.knowledge_bases()] == ["Shared - t1 (t1)", "Shared - t2 (t2)"]
     assert legacy.one("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tenants'") is None
     assert legacy.one("SELECT revoked_at FROM api_keys WHERE id='key'")["revoked_at"]

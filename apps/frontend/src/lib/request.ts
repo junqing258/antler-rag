@@ -1,4 +1,5 @@
 import { authState } from "../composables/useAuth";
+import { requestId } from "./requestId";
 
 export class ApiError extends Error {
   constructor(readonly status: number, readonly code: string, message: string) { super(message); }
@@ -8,7 +9,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   const headers = new Headers(options.headers);
   const token = authState.token;
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  headers.set("x-request-id", crypto.randomUUID());
+  headers.set("x-request-id", requestId());
   headers.set("accept-language", navigator.language);
   if (options.body && !(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
   const response = await fetch(path, { ...options, headers });

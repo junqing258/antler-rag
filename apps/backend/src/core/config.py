@@ -48,12 +48,12 @@ class Settings(BaseSettings):
     embedding_dimensions: int | None = Field(default=None, ge=1, le=4096)
     reranker_base_url: str | None = None
     reranker_api_key: str | None = None
-    agentic_enabled: bool = False
+    agentic_enabled: bool = True
     agent_max_steps: int = Field(default=6, ge=4, le=12)
     agent_max_subqueries: int = Field(default=3, ge=1, le=6)
     agent_max_llm_calls: int = Field(default=5, ge=2, le=10)
     agent_timeout_seconds: int = Field(default=30, ge=1, le=120)
-    graph_enabled: bool = False
+    graph_enabled: bool = True
     graph_extractor_model: str | None = None
     graph_extractor_version: str = Field(default="v1", min_length=1, max_length=80)
     graph_min_confidence: float = Field(default=0.7, ge=0, le=1)

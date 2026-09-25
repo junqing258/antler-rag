@@ -130,7 +130,7 @@ just docker-build
 | `RAG_EMBEDDING_DIMENSIONS` | 模型默认值 | 可选的 embedding 维数；使用 `text-embedding-v4` 时推荐固定为 `1024`。 |
 | `RAG_RERANKER_BASE_URL` | 无 | 可选的 Hugging Face Text Embeddings Inference（TEI）CrossEncoder 服务地址；服务可加载 `BAAI/bge-reranker-large`。 |
 | `RAG_RERANKER_API_KEY` | 无 | 可选的 TEI 服务 Bearer Token。 |
-| `RAG_AGENTIC_ENABLED` | `false` | 是否启用受限 Agentic RAG 端点；默认关闭。 |
+| `RAG_AGENTIC_ENABLED` | `true` | 是否启用受限 Agentic RAG 端点；默认开启。 |
 | `RAG_AGENT_MAX_STEPS` | `6` | 单次 Agent 请求最多执行的受控步骤数。 |
 | `RAG_AGENT_MAX_SUBQUERIES` | `3` | 单次 Agent 请求最多使用的检索子查询数。 |
 | `RAG_AGENT_MAX_LLM_CALLS` | `5` | 单次 Agent 请求允许的 LLM 调用上限。 |

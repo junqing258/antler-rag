@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
@@ -13,13 +12,11 @@ import httpx
 from chromadb.api.models.Collection import Collection
 from chromadb.api.types import Documents, EmbeddingFunction, Embeddings, Space
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from loguru import logger
 
 from core.config import Settings
 
 MAX_EMBEDDING_BATCH_SIZE = 10
-logger = logging.getLogger("antler_rag")
-
-
 @dataclass(frozen=True)
 class RetrievedChunk:
     chunk_id: str
@@ -73,7 +70,13 @@ class TEIReranker:
             response.raise_for_status()
             payload = response.json()
         except (httpx.HTTPError, ValueError) as error:
-            logger.warning("reranker_request_failed candidates=%d error_type=%s duration_ms=%d", len(documents), type(error).__name__, (perf_counter() - started) * 1000)
+            logger.warning(
+                "reranker_request_failed candidates={candidates} error_type={error_type} "
+                "duration_ms={duration_ms:.0f}",
+                candidates=len(documents),
+                error_type=type(error).__name__,
+                duration_ms=(perf_counter() - started) * 1000,
+            )
             raise RerankerError("Reranker request failed") from error
         if not isinstance(payload, list):
             raise RerankerError("Reranker returned an invalid response")
@@ -131,9 +134,24 @@ class OpenAICompatibleEmbeddingFunction(EmbeddingFunction[Documents]):
             response.raise_for_status()
         except httpx.HTTPError as error:
             status_code = error.response.status_code if isinstance(error, httpx.HTTPStatusError) else None
-            logger.warning("embedding_request_failed model=%s batch_size=%d status=%s error_type=%s duration_ms=%d", self.model, len(input), status_code, type(error).__name__, (perf_counter() - started) * 1000)
+            logger.warning(
+                "embedding_request_failed model={model} batch_size={batch_size} status={status} "
+                "error_type={error_type} duration_ms={duration_ms:.0f}",
+                model=self.model,
+                batch_size=len(input),
+                status=status_code,
+                error_type=type(error).__name__,
+                duration_ms=(perf_counter() - started) * 1000,
+            )
             raise
-        logger.info("embedding_request_completed model=%s batch_size=%d status=%s duration_ms=%d", self.model, len(input), response.status_code, (perf_counter() - started) * 1000)
+        logger.info(
+            "embedding_request_completed model={model} batch_size={batch_size} status={status} "
+            "duration_ms={duration_ms:.0f}",
+            model=self.model,
+            batch_size=len(input),
+            status=response.status_code,
+            duration_ms=(perf_counter() - started) * 1000,
+        )
         data = response.json().get("data")
         if not isinstance(data, list) or len(data) != len(input):
             raise ValueError("Embedding provider returned an invalid response")

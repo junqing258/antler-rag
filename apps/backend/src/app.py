@@ -112,21 +112,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         except Exception as error:
             logger.exception(
-                "api_request_unhandled request_id=%s method=%s path=%s error_type=%s",
-                request_id,
-                request.method,
-                request.url.path,
-                type(error).__name__,
+                "api_request_unhandled request_id={request_id} method={method} path={path} "
+                "error_type={error_type}",
+                request_id=request_id,
+                method=request.method,
+                path=request.url.path,
+                error_type=type(error).__name__,
             )
             raise
         response.headers["x-request-id"] = request_id
         logger.info(
-            "api_request_completed request_id=%s method=%s path=%s status=%s duration_ms=%d",
-            request_id,
-            request.method,
-            request.url.path,
-            response.status_code,
-            (perf_counter() - started) * 1000,
+            "api_request_completed request_id={request_id} method={method} path={path} "
+            "status={status} duration_ms={duration_ms:.0f}",
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            status=response.status_code,
+            duration_ms=(perf_counter() - started) * 1000,
         )
         return response
 

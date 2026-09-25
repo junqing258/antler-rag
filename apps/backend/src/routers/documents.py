@@ -84,11 +84,12 @@ async def upload_documents(
             destination.write_bytes(content)
             database.set_document_status(knowledge_base_id, document["id"], "indexing")
             logger.info(
-                "document_index_started request_id=%s knowledge_base_id=%s document_id=%s size_bytes=%d",
-                request.state.request_id,
-                knowledge_base_id,
-                document["id"],
-                len(content),
+                "document_index_started request_id={request_id} knowledge_base_id={knowledge_base_id} "
+                "document_id={document_id} size_bytes={size_bytes}",
+                request_id=request.state.request_id,
+                knowledge_base_id=knowledge_base_id,
+                document_id=document["id"],
+                size_bytes=len(content),
             )
             chunks = rag.index(
                 knowledge_base_id=knowledge_base_id,
@@ -108,21 +109,23 @@ async def upload_documents(
             indexed.append(database.document(knowledge_base_id, document["id"]) or {})
             audit(request, principal, "create", "document", document["id"])
             logger.info(
-                "document_index_completed request_id=%s knowledge_base_id=%s document_id=%s chunk_count=%d",
-                request.state.request_id,
-                knowledge_base_id,
-                document["id"],
-                chunks,
+                "document_index_completed request_id={request_id} knowledge_base_id={knowledge_base_id} "
+                "document_id={document_id} chunk_count={chunk_count}",
+                request_id=request.state.request_id,
+                knowledge_base_id=knowledge_base_id,
+                document_id=document["id"],
+                chunk_count=chunks,
             )
         except APIError:
             raise
         except (UnsupportedDocument, ValueError) as error:
             logger.warning(
-                "document_index_rejected request_id=%s knowledge_base_id=%s document_id=%s error_type=%s",
-                request.state.request_id,
-                knowledge_base_id,
-                document["id"] if document else None,
-                type(error).__name__,
+                "document_index_rejected request_id={request_id} knowledge_base_id={knowledge_base_id} "
+                "document_id={document_id} error_type={error_type}",
+                request_id=request.state.request_id,
+                knowledge_base_id=knowledge_base_id,
+                document_id=document["id"] if document else None,
+                error_type=type(error).__name__,
             )
             if document:
                 database.set_document_status(
@@ -134,11 +137,12 @@ async def upload_documents(
             raise APIError("invalid_document", str(error), 422) from error
         except Exception as error:
             logger.exception(
-                "document_index_failed request_id=%s knowledge_base_id=%s document_id=%s error_type=%s",
-                request.state.request_id,
-                knowledge_base_id,
-                document["id"] if document else None,
-                type(error).__name__,
+                "document_index_failed request_id={request_id} knowledge_base_id={knowledge_base_id} "
+                "document_id={document_id} error_type={error_type}",
+                request_id=request.state.request_id,
+                knowledge_base_id=knowledge_base_id,
+                document_id=document["id"] if document else None,
+                error_type=type(error).__name__,
             )
             if document:
                 database.set_document_status(

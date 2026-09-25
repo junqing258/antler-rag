@@ -174,6 +174,10 @@ onMounted(load);
               <span class="scope-count">已选择 {{ scopes.length }} 项</span>
             </div>
             <el-checkbox-group v-model="scopes" class="scope-checkboxes">
+              <el-checkbox label="kb:read">
+                <el-tag type="info" size="small" effect="plain">kb:read</el-tag>
+                <span>列出知识库</span>
+              </el-checkbox>
               <el-checkbox label="retrieve">
                 <el-tag type="primary" size="small" effect="plain"
                   >retrieve</el-tag
@@ -185,8 +189,16 @@ onMounted(load);
                 <span>问答对话</span>
               </el-checkbox>
               <el-checkbox label="agentic:query">
-                <el-tag type="success" size="small" effect="plain">agentic:query</el-tag>
+                <el-tag type="success" size="small" effect="plain"
+                  >agentic:query</el-tag
+                >
                 <span>受限 Agent 问答</span>
+              </el-checkbox>
+              <el-checkbox label="graph:read">
+                <el-tag type="info" size="small" effect="plain"
+                  >graph:read</el-tag
+                >
+                <span>搜索知识图谱</span>
               </el-checkbox>
               <el-checkbox label="documents:read">
                 <el-tag type="info" size="small" effect="plain"

@@ -14,6 +14,7 @@ password_hash = PasswordHash.recommended()
 ROLES = {"admin", "editor", "viewer"}
 WRITE_ROLES = {"admin", "editor"}
 SCOPES = {
+    "kb:read",
     "retrieve",
     "chat",
     "documents:read",

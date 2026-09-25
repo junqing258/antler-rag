@@ -1,6 +1,6 @@
 # 后端 Agent 接入方案：Skill 优先、MCP 缓行
 
-> 状态：设计稿，尚未实施。
+> 状态：已实施（后端权限、Agent Skill CLI、接入文档和自动化测试）。真实 Claude Code 问答验收需要已部署服务、已签发的 Key 与可检索数据。
 > 本文档取代 `mcp-server-design.md` 作为当前执行方案；后者转为**缓行存档**（设计完整、决策已关闭），满足 §8 重启条件时按其实施。
 > 目标：让 Claude Code 类 agent 通过 **Agent Skill 包装现有 REST API**，以近零后端改造低成本使用知识库（列表 / 检索 / Agentic 问答 / 图谱搜索）；MCP Server 保留为后续阶段。
 

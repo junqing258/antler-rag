@@ -155,7 +155,7 @@ just docker-build
 | 只读成员 | 查看文档目录，执行检索和问答。 |
 | API Key | 按 scope 调用数据 API，不能访问管理接口。 |
 
-API Key 可授予的 scope 为 `retrieve`、`chat`、`agentic:query`、`documents:read`、`documents:write`、`documents:delete`。浏览器会话使用 `Authorization: Bearer <token>`；API Key 使用 `X-API-Key: <key>`。不需要 `X-Tenant-ID`。
+API Key 可授予的 scope 为 `kb:read`、`retrieve`、`chat`、`agentic:query`、`graph:read`、`documents:read`、`documents:write`、`documents:delete`。浏览器会话使用 `Authorization: Bearer <token>`；API Key 使用 `X-API-Key: <key>`。不需要 `X-Tenant-ID`。通过 Agent Skill 接入的步骤见 [Agent 接入指南](docs/operations/agent-skill.md)。
 
 ## API
 

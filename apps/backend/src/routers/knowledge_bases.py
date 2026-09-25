@@ -26,10 +26,8 @@ router = APIRouter(prefix="/api/v1/knowledge-bases", tags=["knowledge bases"])
 
 @router.get("")
 def list_knowledge_bases(
-    principal: Principal = Depends(access(roles=ROLES)), database: Database = Depends(get_database)
+    _: Principal = Depends(access("kb:read", ROLES)), database: Database = Depends(get_database)
 ) -> dict[str, Any]:
-    if principal.actor_type == "api_key":
-        raise APIError("insufficient_scope", "API keys cannot enumerate knowledge bases", 403)
     return {"items": database.knowledge_bases()}
 
 

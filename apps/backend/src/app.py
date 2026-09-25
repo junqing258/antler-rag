@@ -34,18 +34,25 @@ WRITE_ROLES = {"admin", "editor"}
 SCOPES = {"retrieve", "chat", "documents:read",
           "documents:write", "documents:delete", "agentic:query", "graph:read"}
 
-logger = logging.getLogger("antler_rag")
-if not logger.handlers:
+from uvicorn.logging import DefaultFormatter
+_formatter = DefaultFormatter("%(asctime)s %(levelprefix)s %(name)s %(message)s", use_colors=None)
+_formatter.default_msec_format = "%s.%03d"
+for _name in ("antler_rag", "uvicorn", "uvicorn.error", "uvicorn.access"):
+    _lg = logging.getLogger(_name)
+    _lg.handlers = []
     handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter(
-        "%(asctime)s %(levelname)s %(name)s %(message)s"))
-    logger.addHandler(handler)
-logger.setLevel(logging.INFO)
-logger.propagate = False
+    handler.setFormatter(_formatter)
+    _lg.addHandler(handler)
+    _lg.setLevel(logging.INFO)
+    _lg.propagate = False
+logger = logging.getLogger("antler_rag")
 
 
 def token_digest(
     token: str) -> str: return hashlib.sha256(token.encode()).hexdigest()
+
+
+def new_request_id() -> str: return f"{datetime.now():%Y%m%d%H%M%S}_{uuid4().hex[:8]}"
 
 
 def expiry(hours: int) -> str: return (datetime.now(UTC) +
@@ -198,7 +205,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def request_context(request: Request, call_next: Any) -> Response:
-        request_id = request.headers.get("x-request-id") or str(uuid4())
+        request_id = request.headers.get("x-request-id") or new_request_id()
         request.state.request_id = request_id
         started = perf_counter()
         try:

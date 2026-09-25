@@ -1,0 +1,6 @@
+{
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff"
+  },
+  "flake8.enabled": false
+}

@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
-from config import Settings
+from core.config import Settings
 from db import Database
 from migration import rebuild_chroma, stage_legacy_uploads
 from rag import RAGStore

@@ -25,6 +25,22 @@ FastAPI（管理 UI + /api/v1）
 
 项目是一个 Monorepo：`apps/frontend` 为 Vue 3 + Vite + Element Plus 管理端，`apps/backend` 为 Python 3.11+ / FastAPI 服务。
 
+后端按职责分层，入口 `src/app.py` 只负责应用生命周期、中间件和路由装配：
+
+```text
+apps/backend/src/
+├── core/            # 配置和应用级基础设施
+├── db/              # SQLite 仓储与数据库迁移
+├── models/          # Pydantic 请求/领域模型
+├── rag/             # 向量、图谱和 Agentic RAG 实现
+├── routers/         # 按 API 资源拆分的 FastAPI 路由
+├── services/        # 可复用的业务服务（如 LLM 问答）
+├── utils/           # 文档解析、日志与安全辅助函数
+└── app.py           # 应用装配入口
+```
+
+为避免破坏已有脚本，`config.py` 和 `documents.py` 保留为向新模块转发的兼容入口；新代码应分别从 `core.config` 和 `utils.documents` 导入。
+
 ## 快速开始（Docker）
 
 Docker Compose 是推荐的生产启动方式。

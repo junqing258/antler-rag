@@ -14,7 +14,7 @@ from time import perf_counter
 import httpx
 from pydantic import BaseModel, Field, ValidationError
 
-from config import Settings
+from core.config import Settings
 
 from .retrieval import Evidence, RetrievalService
 

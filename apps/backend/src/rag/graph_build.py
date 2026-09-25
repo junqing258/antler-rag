@@ -8,7 +8,7 @@ from typing import Literal
 import httpx
 from pydantic import BaseModel, Field
 
-from config import Settings
+from core.config import Settings
 from db import Database
 
 from .graph_store import GraphStore

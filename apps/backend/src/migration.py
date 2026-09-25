@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import shutil
 
-from config import Settings
+from core.config import Settings
 from db import Database
-from documents import UnsupportedDocument, extract_text
 from rag import RAGStore
 from rag.store import upload_path
+from utils.documents import UnsupportedDocument, extract_text
 
 
 def stage_legacy_uploads(settings: Settings, database: Database) -> bool:

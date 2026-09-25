@@ -237,14 +237,14 @@ onMounted(load);
       <div>
         <button
           :class="{ active: cardView }"
-          @click="cardView = true"
           type="button"
+          @click="cardView = true"
         >
           <el-icon><Grid /></el-icon></button
         ><button
           :class="{ active: !cardView }"
-          @click="cardView = false"
           type="button"
+          @click="cardView = false"
         >
           <el-icon><Menu /></el-icon>
         </button>

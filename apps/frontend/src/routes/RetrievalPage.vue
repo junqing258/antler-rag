@@ -297,7 +297,7 @@ function useExample(text: string) {
           >
         </article>
       </aside>
-      <main class="search-results" v-loading="loading">
+      <main v-loading="loading" class="search-results">
         <article class="request-status">
           <div>
             <span>● 200 OK</span

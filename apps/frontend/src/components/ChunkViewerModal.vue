@@ -47,7 +47,7 @@ function copyChunkText(content: string) {
       </div>
     </template>
 
-    <div class="modal-body-content" v-loading="loading">
+    <div v-loading="loading" class="modal-body-content">
       <div class="meta-strip">
         <div class="meta-item">
           <span>切块总数</span>

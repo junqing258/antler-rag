@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "test": "vitest run",
-    "lint": "eslint src --ext .ts,.vue",
+    "lint": "eslint src",
     "format": "prettier . --write",
     "format:check": "prettier . --check"
   },
@@ -21,15 +21,19 @@
     "vue-router": "^4.5.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^22.10.2",
     "@vitejs/plugin-vue": "^6.0.8",
     "code-inspector-plugin": "^2.0.8",
     "eslint": "^9.17.0",
+    "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-vue": "^9.32.0",
+    "globals": "^17.12.0",
     "prettier": "^3.4.2",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.7.2",
+    "typescript-eslint": "^8.70.1",
     "vite": "^8.3.0",
     "vitest": "^4.1.11",
     "vue-tsc": "^2.2.0"

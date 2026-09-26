@@ -69,7 +69,12 @@ class GraphStore:
         return rows
 
     def start_build(
-        self, *, knowledge_base_id: str, requested_by: str | None, extractor_model: str, extractor_version: str
+        self,
+        *,
+        knowledge_base_id: str,
+        requested_by: str | None,
+        extractor_model: str,
+        extractor_version: str,
     ) -> str:
         build_id, stamp = str(uuid4()), now()
         with self.database.connection() as conn:
@@ -79,7 +84,15 @@ class GraphStore:
                     """INSERT INTO graph_builds(id,knowledge_base_id,requested_by,status,extractor_model,
                        extractor_version,schema_version,requested_at,started_at)
                        VALUES(?,?,?,'running',?,?,1,?,?)""",
-                    (build_id, knowledge_base_id, requested_by, extractor_model, extractor_version, stamp, stamp),
+                    (
+                        build_id,
+                        knowledge_base_id,
+                        requested_by,
+                        extractor_model,
+                        extractor_version,
+                        stamp,
+                        stamp,
+                    ),
                 )
                 conn.commit()
             except Exception:
@@ -96,26 +109,54 @@ class GraphStore:
         )
 
     def mark_failed(
-        self, *, knowledge_base_id: str, document_id: str, build_id: str, source_sha256: str, error_code: str
+        self,
+        *,
+        knowledge_base_id: str,
+        document_id: str,
+        build_id: str,
+        source_sha256: str,
+        error_code: str,
     ) -> None:
         self._set_state(
-            knowledge_base_id=knowledge_base_id, document_id=document_id, build_id=build_id,
-            source_sha256=source_sha256, status="failed", error_code=error_code,
+            knowledge_base_id=knowledge_base_id,
+            document_id=document_id,
+            build_id=build_id,
+            source_sha256=source_sha256,
+            status="failed",
+            error_code=error_code,
         )
 
     def mark_ready(
-        self, *, knowledge_base_id: str, document_id: str, build_id: str, source_sha256: str,
-        extractor_model: str, extractor_version: str,
+        self,
+        *,
+        knowledge_base_id: str,
+        document_id: str,
+        build_id: str,
+        source_sha256: str,
+        extractor_model: str,
+        extractor_version: str,
     ) -> None:
         self._set_state(
-            knowledge_base_id=knowledge_base_id, document_id=document_id, build_id=build_id,
-            source_sha256=source_sha256, status="ready", error_code=None,
-            extractor_model=extractor_model, extractor_version=extractor_version,
+            knowledge_base_id=knowledge_base_id,
+            document_id=document_id,
+            build_id=build_id,
+            source_sha256=source_sha256,
+            status="ready",
+            error_code=None,
+            extractor_model=extractor_model,
+            extractor_version=extractor_version,
         )
 
     def replace_document_facts(
-        self, *, knowledge_base_id: str, document_id: str, build_id: str, source_sha256: str,
-        extractor_model: str, extractor_version: str, facts: list[dict[str, object]],
+        self,
+        *,
+        knowledge_base_id: str,
+        document_id: str,
+        build_id: str,
+        source_sha256: str,
+        extractor_model: str,
+        extractor_version: str,
+        facts: list[dict[str, object]],
     ) -> None:
         """Atomically replace one document's provenance with validated extractor facts."""
         with self.database.connection() as conn:
@@ -125,7 +166,11 @@ class GraphStore:
                     "SELECT status,sha256 FROM documents WHERE id=? AND knowledge_base_id=?",
                     (document_id, knowledge_base_id),
                 ).fetchone()
-                if not document or document["status"] != "ready" or document["sha256"] != source_sha256:
+                if (
+                    not document
+                    or document["status"] != "ready"
+                    or document["sha256"] != source_sha256
+                ):
                     raise ValueError("Document changed while graph build was running")
                 self._cleanup_provenance(conn, knowledge_base_id, document_id, remove_state=False)
                 entity_ids: dict[tuple[str, str], str] = {}
@@ -142,19 +187,48 @@ class GraphStore:
                         if not row:
                             conn.execute(
                                 "INSERT INTO entities VALUES(?,?,?,?,?,?,?)",
-                                (entity_id, knowledge_base_id, name, normalized, entity_type, now(), now()),
+                                (
+                                    entity_id,
+                                    knowledge_base_id,
+                                    name,
+                                    normalized,
+                                    entity_type,
+                                    now(),
+                                    now(),
+                                ),
                             )
                         entity_ids[(normalized, entity_type)] = entity_id
                         conn.execute(
                             "INSERT OR IGNORE INTO entity_mentions VALUES(?,?,?,?,?,?,?)",
-                            (str(uuid4()), entity_id, knowledge_base_id, document_id, chunk_id, 0, len(name)),
+                            (
+                                str(uuid4()),
+                                entity_id,
+                                knowledge_base_id,
+                                document_id,
+                                chunk_id,
+                                0,
+                                len(name),
+                            ),
                         )
                     for relation in fact["relations"]:  # type: ignore[union-attr]
-                        subject = entity_ids.get((str(relation["subject"]).casefold().strip(), str(relation["subject_type"])))
-                        object_ = entity_ids.get((str(relation["object"]).casefold().strip(), str(relation["object_type"])))
+                        subject = entity_ids.get(
+                            (
+                                str(relation["subject"]).casefold().strip(),
+                                str(relation["subject_type"]),
+                            )
+                        )
+                        object_ = entity_ids.get(
+                            (
+                                str(relation["object"]).casefold().strip(),
+                                str(relation["object_type"]),
+                            )
+                        )
                         if not subject or not object_:
                             continue
-                        predicate, confidence = str(relation["predicate"]), float(relation["confidence"])
+                        predicate, confidence = (
+                            str(relation["predicate"]),
+                            float(relation["confidence"]),
+                        )
                         row = conn.execute(
                             """SELECT id FROM relations WHERE knowledge_base_id=? AND subject_entity_id=?
                                AND predicate=? AND object_entity_id=?""",
@@ -164,12 +238,29 @@ class GraphStore:
                         if not row:
                             conn.execute(
                                 "INSERT INTO relations VALUES(?,?,?,?,?,?,?,?,?,?)",
-                                (relation_id, knowledge_base_id, subject, predicate, object_, confidence,
-                                 extractor_model, extractor_version, now(), now()),
+                                (
+                                    relation_id,
+                                    knowledge_base_id,
+                                    subject,
+                                    predicate,
+                                    object_,
+                                    confidence,
+                                    extractor_model,
+                                    extractor_version,
+                                    now(),
+                                    now(),
+                                ),
                             )
                         conn.execute(
                             "INSERT OR IGNORE INTO relation_mentions VALUES(?,?,?,?,?,?)",
-                            (str(uuid4()), relation_id, knowledge_base_id, document_id, chunk_id, build_id),
+                            (
+                                str(uuid4()),
+                                relation_id,
+                                knowledge_base_id,
+                                document_id,
+                                chunk_id,
+                                build_id,
+                            ),
                         )
                 conn.execute(
                     """INSERT INTO graph_document_states VALUES(?,?,?,?,?,?,?,?,?,?)
@@ -177,8 +268,18 @@ class GraphStore:
                        source_sha256=excluded.source_sha256,status='ready',extractor_model=excluded.extractor_model,
                        extractor_version=excluded.extractor_version,indexed_at=excluded.indexed_at,
                        error_code=NULL,updated_at=excluded.updated_at""",
-                    (knowledge_base_id, document_id, build_id, source_sha256, "ready", extractor_model,
-                     extractor_version, now(), None, now()),
+                    (
+                        knowledge_base_id,
+                        document_id,
+                        build_id,
+                        source_sha256,
+                        "ready",
+                        extractor_model,
+                        extractor_version,
+                        now(),
+                        None,
+                        now(),
+                    ),
                 )
                 conn.commit()
             except Exception:
@@ -186,19 +287,48 @@ class GraphStore:
                 raise
 
     @staticmethod
-    def _cleanup_provenance(conn: object, knowledge_base_id: str, document_id: str, *, remove_state: bool) -> None:
+    def _cleanup_provenance(
+        conn: object, knowledge_base_id: str, document_id: str, *, remove_state: bool
+    ) -> None:
         # sqlite.Connection deliberately stays structural here to keep the transaction private.
-        conn.execute("DELETE FROM relation_mentions WHERE knowledge_base_id=? AND document_id=?", (knowledge_base_id, document_id))  # type: ignore[union-attr]
-        conn.execute("DELETE FROM entity_mentions WHERE knowledge_base_id=? AND document_id=?", (knowledge_base_id, document_id))  # type: ignore[union-attr]
+        conn.execute(
+            "DELETE FROM relation_mentions WHERE knowledge_base_id=? AND document_id=?",
+            (knowledge_base_id, document_id),
+        )  # type: ignore[union-attr]
+        conn.execute(
+            "DELETE FROM entity_mentions WHERE knowledge_base_id=? AND document_id=?",
+            (knowledge_base_id, document_id),
+        )  # type: ignore[union-attr]
         if remove_state:
-            conn.execute("DELETE FROM graph_document_states WHERE knowledge_base_id=? AND document_id=?", (knowledge_base_id, document_id))  # type: ignore[union-attr]
-        conn.execute("DELETE FROM relations WHERE knowledge_base_id=? AND NOT EXISTS (SELECT 1 FROM relation_mentions rm WHERE rm.relation_id=relations.id)", (knowledge_base_id,))  # type: ignore[union-attr]
-        conn.execute("DELETE FROM entity_aliases WHERE entity_id IN (SELECT e.id FROM entities e WHERE e.knowledge_base_id=? AND NOT EXISTS (SELECT 1 FROM entity_mentions em WHERE em.entity_id=e.id) AND NOT EXISTS (SELECT 1 FROM relations r WHERE r.subject_entity_id=e.id OR r.object_entity_id=e.id))", (knowledge_base_id,))  # type: ignore[union-attr]
-        conn.execute("DELETE FROM entities WHERE knowledge_base_id=? AND NOT EXISTS (SELECT 1 FROM entity_mentions em WHERE em.entity_id=entities.id) AND NOT EXISTS (SELECT 1 FROM relations r WHERE r.subject_entity_id=entities.id OR r.object_entity_id=entities.id)", (knowledge_base_id,))  # type: ignore[union-attr]
+            conn.execute(
+                "DELETE FROM graph_document_states WHERE knowledge_base_id=? AND document_id=?",
+                (knowledge_base_id, document_id),
+            )  # type: ignore[union-attr]
+        conn.execute(
+            "DELETE FROM relations WHERE knowledge_base_id=? AND NOT EXISTS (SELECT 1 FROM relation_mentions rm WHERE rm.relation_id=relations.id)",
+            (knowledge_base_id,),
+        )  # type: ignore[union-attr]
+        conn.execute(
+            "DELETE FROM entity_aliases WHERE entity_id IN (SELECT e.id FROM entities e WHERE e.knowledge_base_id=? AND NOT EXISTS (SELECT 1 FROM entity_mentions em WHERE em.entity_id=e.id) AND NOT EXISTS (SELECT 1 FROM relations r WHERE r.subject_entity_id=e.id OR r.object_entity_id=e.id))",
+            (knowledge_base_id,),
+        )  # type: ignore[union-attr]
+        conn.execute(
+            "DELETE FROM entities WHERE knowledge_base_id=? AND NOT EXISTS (SELECT 1 FROM entity_mentions em WHERE em.entity_id=entities.id) AND NOT EXISTS (SELECT 1 FROM relations r WHERE r.subject_entity_id=entities.id OR r.object_entity_id=entities.id)",
+            (knowledge_base_id,),
+        )  # type: ignore[union-attr]
 
-    def _set_state(self, *, knowledge_base_id: str, document_id: str, build_id: str, source_sha256: str,
-                   status: str, error_code: str | None, extractor_model: str | None = None,
-                   extractor_version: str | None = None) -> None:
+    def _set_state(
+        self,
+        *,
+        knowledge_base_id: str,
+        document_id: str,
+        build_id: str,
+        source_sha256: str,
+        status: str,
+        error_code: str | None,
+        extractor_model: str | None = None,
+        extractor_version: str | None = None,
+    ) -> None:
         self.database.run(
             """INSERT INTO graph_document_states(knowledge_base_id,document_id,build_id,source_sha256,status,
                extractor_model,extractor_version,indexed_at,error_code,updated_at)
@@ -207,8 +337,18 @@ class GraphStore:
                source_sha256=excluded.source_sha256,status=excluded.status,extractor_model=excluded.extractor_model,
                extractor_version=excluded.extractor_version,indexed_at=excluded.indexed_at,
                error_code=excluded.error_code,updated_at=excluded.updated_at""",
-            (knowledge_base_id, document_id, build_id, source_sha256, status, extractor_model,
-             extractor_version, now() if status == "ready" else None, error_code, now()),
+            (
+                knowledge_base_id,
+                document_id,
+                build_id,
+                source_sha256,
+                status,
+                extractor_model,
+                extractor_version,
+                now() if status == "ready" else None,
+                error_code,
+                now(),
+            ),
         )
 
     def cleanup_document(self, *, knowledge_base_id: str, document_id: str) -> None:

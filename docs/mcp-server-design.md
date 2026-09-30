@@ -7,7 +7,7 @@
 
 本期能力：
 
-- 后端作为 **MCP Server**（资源方），挂载在现有 FastAPI 应用内，单进程单端口（8000）对外服务；
+- 后端作为 **MCP Server**（资源方），挂载在现有 FastAPI 应用内，单进程单端口（6050）对外服务；
 - 暴露 4 个只读 tools：`retrieve`、`agentic_rag`、`list_knowledge_bases`、`graph_search`；
 - 鉴权**复用现有 API Key + scope 体系**（API Key 作为 Bearer Token），不引入新凭据体系；
 - tools 实现**复用现有服务层**（RetrievalService / AgentService / GraphStore / Database），零业务逻辑复制；
@@ -58,7 +58,7 @@
 MCP 客户端 (Claude Code / Cursor / Claude Desktop / Inspector)
         |  Streamable HTTP  ·  Authorization: Bearer <API Key>
         v
-FastAPI app (现有, :8000)
+FastAPI app (现有, :6050)
   ├── /api/v1/...     现有 REST 路由（不动）
   ├── /mcp            新增：Mount(mcp.streamable_http_app())
   │     ├── auth 中间件: ApiKeyTokenVerifier ──> api_keys 表（复用 key_by_hash）

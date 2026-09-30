@@ -64,14 +64,14 @@ Docker Compose 是推荐的生产启动方式。
    docker compose up --build
    ```
 
-4. 打开 `http://localhost:8000`，使用 bootstrap 账号登录，并由管理员创建首个知识库。
+4. 打开 `http://localhost:6050`，使用 bootstrap 账号登录，并由管理员创建首个知识库。
 
 首次成功登录后，请从 `.env` 移除 `RAG_BOOTSTRAP_ADMIN_PASSWORD`（以及不再需要时的邮箱）。引导账户只会创建一次，但不应长期保留该明文密码。
 
 服务就绪检查：
 
 ```bash
-curl http://localhost:8000/health/ready
+curl http://localhost:6050/health/ready
 ```
 
 ## 本地开发
@@ -155,11 +155,15 @@ just docker-build
 | 只读成员 | 查看文档目录，执行检索和问答。 |
 | API Key | 按 scope 调用数据 API，不能访问管理接口。 |
 
-API Key 可授予的 scope 为 `kb:read`、`retrieve`、`chat`、`agentic:query`、`graph:read`、`documents:read`、`documents:write`、`documents:delete`。浏览器会话使用 `Authorization: Bearer <token>`；API Key 使用 `X-API-Key: <key>`。不需要 `X-Tenant-ID`。通过 Agent Skill 接入的步骤见 [Agent 接入指南](docs/operations/agent-skill.md)。
+API Key 可授予的 scope 为 `kb:read`、`retrieve`、`chat`、`agentic:query`、`graph:read`、`documents:read`、`documents:write`、`documents:delete`。浏览器会话使用 `Authorization: Bearer <token>`；API Key 使用 `X-API-Key: <key>`。不需要 `X-Tenant-ID`。
+
+### Agent Skill 下载与使用
+
+在「API Key 管理」页面创建 Key（至少选择 `kb:read`、`retrieve`），点击「下载 Skill ZIP」，解压到 `~/.claude/skills/`。为 Agent 进程配置 `ANTLER_RAG_URL`（服务根地址）和 `ANTLER_RAG_KEY`（完整 Key），重启会话后即可请 Agent 检索内部知识库并引用来源。安装命令、验证方法及项目级安装方式见 [Agent 接入指南](docs/operations/agent-skill.md)。
 
 ## API
 
-完整、可交互的请求模型以运行中服务的 OpenAPI 文档为准：生产环境为 `http://localhost:8000/docs`，开发环境为 `http://localhost:8001/docs`。
+完整、可交互的请求模型以运行中服务的 OpenAPI 文档为准：生产环境为 `http://localhost:6050/docs`，开发环境为 `http://localhost:8001/docs`。
 
 核心端点如下：
 
@@ -174,7 +178,7 @@ API Key 可授予的 scope 为 `kb:read`、`retrieve`、`chat`、`agentic:query`
 使用 API Key 检索的示例：
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/retrieve \
+curl -X POST http://localhost:6050/api/v1/retrieve \
   -H 'Content-Type: application/json' \
   -H 'X-API-Key: ark_your_key' \
   -d '{

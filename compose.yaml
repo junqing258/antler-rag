@@ -2,7 +2,7 @@ services:
   antler-rag:
     build: .
     ports:
-      - "8000:8000"
+      - "6050:6050"
     env_file:
       - .env
     environment:

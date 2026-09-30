@@ -12,8 +12,8 @@ import { saveAuth } from "../composables/useAuth";
 import BrandLogo from "../components/BrandLogo.vue";
 
 const router = useRouter();
-const email = ref("");
-const password = ref("");
+const email = ref("admin@example.com");
+const password = ref("123456");
 const error = ref("");
 const loading = ref(false);
 
@@ -69,10 +69,9 @@ async function login() {
         <el-form-item label="登录密码"
           ><el-input
             v-model="password"
-            type="password"
+            type="text"
             autocomplete="current-password"
             placeholder="请输入登录密码"
-            show-password
             size="large"
             ><template #prefix
               ><el-icon><Lock /></el-icon></template></el-input

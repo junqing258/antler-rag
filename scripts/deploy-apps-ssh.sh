@@ -244,6 +244,6 @@ log_step "远端服务状态"
 remote_sh "cd $(quote_for_remote_sh "$DEPLOY_REMOTE_DIR") && docker compose -f docker-compose.remote.yml --env-file .env ps"
 
 remote_host="${DEPLOY_SSH_TARGET##*@}"
-web_port="$(read_deploy_env_value RAG_WEB_PORT || printf '8000')"
+web_port="$(read_deploy_env_value RAG_WEB_PORT || printf '6050')"
 printf '%s\n' "部署完成：image=${DEPLOY_IMAGE_REF}"
 printf '%s\n' "访问地址：http://${remote_host}:${web_port}/"

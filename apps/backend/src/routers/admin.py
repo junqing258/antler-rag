@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import secrets
+from io import BytesIO
+from pathlib import Path
 from typing import Any
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import Response
 
 from core.config import Settings
 from db import Database
@@ -13,6 +17,28 @@ from services.errors import APIError
 from utils.security import SCOPES, expiry, password_hash, public_key, public_user, token_digest
 
 router = APIRouter(prefix="/api/v1", tags=["administration"])
+
+
+@router.get("/agent-skill/download")
+def download_agent_skill(_: Principal = Depends(administrator)) -> Response:
+    """Package the version of the skill shipped with this application."""
+    application_dir = Path(__file__).resolve().parents[2]
+    candidates = (
+        application_dir / "skills" / "antler-rag",
+        application_dir.parents[1] / "skills" / "antler-rag",
+    )
+    skill_dir = next((path for path in candidates if path.is_dir()), None)
+    if skill_dir is None:
+        raise APIError("skill_unavailable", "Agent Skill package is unavailable", 503)
+    package = BytesIO()
+    with ZipFile(package, "w", ZIP_DEFLATED) as archive:
+        for relative in ("SKILL.md", "scripts/rag.py"):
+            archive.write(skill_dir / relative, f"antler-rag/{relative}")
+    return Response(
+        content=package.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="antler-rag-skill.zip"'},
+    )
 
 
 @router.get("/users")

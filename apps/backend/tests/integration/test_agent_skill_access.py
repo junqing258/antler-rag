@@ -1,4 +1,6 @@
+from io import BytesIO
 from pathlib import Path
+from zipfile import ZipFile
 
 from fastapi.testclient import TestClient
 
@@ -39,3 +41,29 @@ def test_kb_read_scope_allows_api_key_listing_without_changing_session_access(
     assert [item["id"] for item in allowed.json()["items"]] == [created["id"]]
     assert forbidden.status_code == 403
     assert forbidden.json()["code"] == "insufficient_scope"
+
+
+def test_agent_skill_download_contains_installable_files_and_requires_admin(tmp_path: Path) -> None:
+    settings = Settings(
+        data_dir=tmp_path,
+        bootstrap_admin_email="admin@example.com",
+        bootstrap_admin_password="a-long-bootstrap-password",
+    )
+    with TestClient(create_app(settings)) as client:
+        denied = client.get("/api/v1/agent-skill/download")
+        login = client.post(
+            "/api/v1/auth/login",
+            json={"email": "admin@example.com", "password": "a-long-bootstrap-password"},
+        )
+        session = {"Authorization": f"Bearer {login.json()['token']}"}
+        downloaded = client.get("/api/v1/agent-skill/download", headers=session)
+
+    assert denied.status_code == 401
+    assert downloaded.status_code == 200
+    assert downloaded.headers["content-type"] == "application/zip"
+    with ZipFile(BytesIO(downloaded.content)) as package:
+        assert set(package.namelist()) == {
+            "antler-rag/SKILL.md",
+            "antler-rag/scripts/rag.py",
+        }
+        assert b"name: antler-rag" in package.read("antler-rag/SKILL.md")

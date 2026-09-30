@@ -8,9 +8,12 @@ import {
   Delete,
   Operation,
   Timer,
+  Download,
 } from "@element-plus/icons-vue";
 import { ElMessageBox, ElMessage } from "element-plus";
 import { api } from "../lib/request";
+import { authState } from "../composables/useAuth";
+import { requestId } from "../lib/requestId";
 import ApiCodeSnippetModal from "../components/ApiCodeSnippetModal.vue";
 
 const items = ref<any[]>([]);
@@ -20,6 +23,36 @@ const secret = ref("");
 const error = ref("");
 const loading = ref(false);
 const showCodeModal = ref(false);
+const downloadingSkill = ref(false);
+
+async function downloadSkill() {
+  downloadingSkill.value = true;
+  try {
+    const response = await fetch("/api/v1/agent-skill/download", {
+      headers: {
+        Authorization: `Bearer ${authState.token}`,
+        "x-request-id": requestId(),
+      },
+    });
+    if (response.status === 401) authState.clear();
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      throw new Error(payload?.message || "Skill 下载失败");
+    }
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "antler-rag-skill.zip";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (e: any) {
+    ElMessage.error(e.message || "Skill 下载失败");
+  } finally {
+    downloadingSkill.value = false;
+  }
+}
 
 async function load() {
   try {
@@ -237,6 +270,49 @@ onMounted(load);
       </div>
     </article>
 
+    <article class="panel skill-panel">
+      <div class="panel-header">
+        <div>
+          <h3 class="panel-title">在 Agent 中使用知识库</h3>
+          <p class="panel-subtitle">
+            下载 Antler RAG Skill，安装到 Claude Code 后即可检索知识库。
+          </p>
+        </div>
+        <el-button :loading="downloadingSkill" @click="downloadSkill">
+          <el-icon class="mr-1"><Download /></el-icon>下载 Skill ZIP
+        </el-button>
+      </div>
+      <div class="panel-body skill-guide">
+        <ol>
+          <li>
+            创建 API Key，至少授予 <code>kb:read</code> 和
+            <code>retrieve</code>；问答或图谱按需增加
+            <code>agentic:query</code>、<code>graph:read</code>。
+          </li>
+          <li>
+            将下载的 ZIP 解压到 <code>~/.claude/skills/</code>，得到
+            <code>~/.claude/skills/antler-rag/SKILL.md</code> 和
+            <code>scripts/rag.py</code>。
+          </li>
+          <li>
+            在 Agent 进程环境中配置
+            <code>ANTLER_RAG_URL</code>（本站根地址，不含
+            <code>/api/v1</code>）和 <code>ANTLER_RAG_KEY</code>（完整
+            Key），然后重启 Agent 会话。
+          </li>
+          <li>
+            向 Agent
+            提问，例如“请检索内部知识库中的退款政策，并引用来源”。也可运行下面的命令检查连接。
+          </li>
+        </ol>
+        <pre><code>python3 "$HOME/.claude/skills/antler-rag/scripts/rag.py" list-kbs</code></pre>
+        <p class="skill-note">
+          需要 Python 3.9+ 和 POSIX shell；Windows 可使用 Git
+          Bash。请通过受控环境注入 Key，不要将其写入项目配置或提交到版本库。
+        </p>
+      </div>
+    </article>
+
     <!-- Keys List Panel -->
     <article class="panel key-list">
       <div class="panel-header">
@@ -305,6 +381,41 @@ onMounted(load);
 </template>
 
 <style scoped>
+.skill-panel {
+  margin-top: 24px;
+  margin-bottom: 24px;
+}
+
+.skill-guide ol {
+  margin: 0;
+  padding-left: 20px;
+  line-height: 1.9;
+}
+
+.skill-guide li + li {
+  margin-top: 8px;
+}
+
+.skill-guide code,
+.skill-guide pre {
+  font-family: "DM Mono", monospace;
+}
+
+.skill-guide pre {
+  overflow-x: auto;
+  margin: 16px 0 0;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.skill-note {
+  margin: 12px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .secret-box {
   display: flex;
   gap: 16px;

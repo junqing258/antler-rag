@@ -11,13 +11,13 @@ services:
     volumes:
       - rag-data:/data
     ports:
-      - "${RAG_WEB_PORT:-8000}:8000"
+      - "${RAG_WEB_PORT:-6050}:6050"
     healthcheck:
       test:
         - CMD
         - /app/.venv/bin/python
         - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3).close()"
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:6050/health/ready', timeout=3).close()"
       interval: 10s
       timeout: 5s
       retries: 12

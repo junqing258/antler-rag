@@ -388,32 +388,86 @@ onMounted(load);
 
 .skill-guide ol {
   margin: 0;
-  padding-left: 20px;
-  line-height: 1.9;
+  padding-left: 0;
+  list-style: none;
+  counter-reset: step;
 }
 
-.skill-guide li + li {
-  margin-top: 8px;
+.skill-guide li {
+  position: relative;
+  padding-left: 40px;
+  margin-bottom: 20px;
+  line-height: 1.7;
+  color: #475569;
+  font-size: 14px;
 }
 
-.skill-guide code,
-.skill-guide pre {
+.skill-guide li:last-of-type {
+  margin-bottom: 0;
+}
+
+.skill-guide li::before {
+  content: counter(step);
+  counter-increment: step;
+  position: absolute;
+  left: 0;
+  top: 2px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+  color: #0369a1;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.skill-guide code {
+  padding: 4px 8px;
+  border-radius: 5px;
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+  color: #0369a1;
+  font-size: 12.5px;
+  font-weight: 600;
   font-family: "DM Mono", monospace;
 }
 
 .skill-guide pre {
   overflow-x: auto;
-  margin: 16px 0 0;
-  padding: 12px 16px;
-  border-radius: 8px;
-  background: #f8fafc;
+  margin: 18px 0 0;
+  padding: 16px 20px;
+  border-radius: 10px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  font-family: "DM Mono", monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #334155;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.skill-guide pre code {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: inherit;
+  font-weight: normal;
 }
 
 .skill-note {
-  margin: 12px 0 0;
+  margin: 16px 0 0;
+  padding: 12px 16px;
   color: #64748b;
-  font-size: 12px;
-  line-height: 1.6;
+  background: #f8fafc;
+  border-left: 3px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 12.5px;
+  line-height: 1.65;
 }
 
 .secret-box {

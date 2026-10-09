@@ -1,4 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
 :root {
@@ -34,11 +33,12 @@
 
   color: var(--ink);
   font-family:
-    "Geist",
-    "Noto Sans SC",
     -apple-system,
     BlinkMacSystemFont,
     "Segoe UI",
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Microsoft YaHei",
     sans-serif;
   font-synthesis: none;
 }
@@ -80,7 +80,7 @@ select {
 }
 
 .mono {
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
 }
 
 /* Animations */

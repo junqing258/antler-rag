@@ -595,8 +595,8 @@ onMounted(load);
 }
 
 .scope-checkboxes {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 12px;
   background: #f8fafc;
@@ -633,8 +633,9 @@ onMounted(load);
 
 .scope-checkboxes :deep(.el-checkbox) {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  min-width: 0;
+  width: max-content;
   height: 46px;
   margin-right: 0;
   padding: 0 10px;
@@ -656,17 +657,18 @@ onMounted(load);
 .scope-checkboxes :deep(.el-checkbox__label) {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   min-width: 0;
   padding-left: 8px;
   color: #475569;
   font-size: 12px;
   font-weight: 600;
+  line-height: 1.5;
   white-space: nowrap;
 }
 
 .scope-checkboxes :deep(.el-tag) {
   flex-shrink: 0;
-  margin-right: 6px;
 }
 
 .form-actions {
@@ -725,12 +727,6 @@ onMounted(load);
   margin-right: 4px;
 }
 
-@media (max-width: 1080px) {
-  .scope-checkboxes {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 640px) {
   .credential-details {
     grid-template-columns: 1fr;
@@ -751,10 +747,6 @@ onMounted(load);
 
   .scope-count {
     margin-top: -2px;
-  }
-
-  .scope-checkboxes {
-    grid-template-columns: 1fr;
   }
 
   .submit-key-btn {

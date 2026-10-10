@@ -47,7 +47,9 @@ Docker volume（默认 antler-rag-data）中，不会随镜像更新删除。
   DEPLOY_DEBUG            设为 1 输出调试命令
   DEPLOY_GZIP_LEVEL       gzip 压缩级别（1-9）；默认 1，以传输速度优先
 
-镜像传输使用 pv 显示实时进度、吞吐率与 ETA。macOS 可通过 brew install pv 安装。
+先导出 gzip 压缩镜像归档，再用 pv 按归档实际大小显示传输进度、吞吐率与 ETA。
+本地需有足够空间存放临时压缩归档；脚本退出时自动清理。
+macOS 可通过 brew install pv 安装 pv。
 
 示例：
   cp .env.deploy.example .env.deploy
@@ -100,7 +102,7 @@ remote_scp() {
 }
 
 transfer_image() {
-  docker save "$DEPLOY_IMAGE_REF" | pv -f -p -t -e -r -b -s "$image_size_bytes" | gzip "-$DEPLOY_GZIP_LEVEL" | remote_sh "gunzip | docker load"
+  pv -f -p -t -e -r -b -s "$image_archive_size_bytes" "$tmp_image_archive" | remote_sh "gunzip | docker load"
 }
 
 read_env_file_value() {
@@ -195,8 +197,12 @@ ssh_options=(-p "$DEPLOY_SSH_PORT" -o ServerAliveInterval=15 -o ServerAliveCount
 scp_options=(-P "$DEPLOY_SSH_PORT" -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o Compression=no)
 
 tmp_env_file="$(mktemp)"
+tmp_image_archive=""
 cleanup() {
   rm -f "$tmp_env_file"
+  if [[ -n "$tmp_image_archive" ]]; then
+    rm -f "$tmp_image_archive"
+  fi
 }
 trap cleanup EXIT
 
@@ -232,9 +238,11 @@ remote_sh "mkdir -p $(quote_for_remote_sh "$DEPLOY_REMOTE_DIR")"
 remote_scp "$DEPLOY_COMPOSE_FILE" "$DEPLOY_SSH_TARGET:$DEPLOY_REMOTE_DIR/docker-compose.remote.yml"
 remote_scp "$tmp_env_file" "$DEPLOY_SSH_TARGET:$DEPLOY_REMOTE_DIR/.env"
 
-log_step "传输镜像"
-image_size_bytes="$(docker image inspect --format '{{.Size}}' "$DEPLOY_IMAGE_REF")"
-log_step "镜像层大小约 $(format_mib "$image_size_bytes")；流式压缩、传输并导入远端 Docker"
+log_step "导出压缩镜像归档"
+tmp_image_archive="$(mktemp)"
+docker save "$DEPLOY_IMAGE_REF" | gzip "-$DEPLOY_GZIP_LEVEL" > "$tmp_image_archive"
+image_archive_size_bytes="$(wc -c < "$tmp_image_archive" | tr -d '[:space:]')"
+log_step "压缩归档大小 $(format_mib "$image_archive_size_bytes")；传输并导入远端 Docker（进度按归档实际大小计算）"
 transfer_image
 
 log_step "启动服务并等待健康检查"

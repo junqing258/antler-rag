@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app import create_app
-from config import Settings
+from core.config import Settings
 
 
 def test_chat_accepts_message_body_field(tmp_path: Path) -> None:

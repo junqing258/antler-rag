@@ -11,14 +11,14 @@ import chromadb
 import httpx
 from chromadb.api.models.Collection import Collection
 from chromadb.api.types import Documents, EmbeddingFunction, Embeddings, Space
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from loguru import logger
 
 from core.config import Settings
+from rag.chunking import CHUNKER_VERSIONS, ChunkDraft, ChunkMetadata, ChunkStrategy
 
 MAX_EMBEDDING_BATCH_SIZE = 10
 @dataclass(frozen=True)
-class RetrievedChunk:
+class RetrievedChunk(ChunkMetadata):
     chunk_id: str
     document_id: str
     knowledge_base_id: str
@@ -30,7 +30,7 @@ class RetrievedChunk:
 
 
 @dataclass(frozen=True)
-class IndexedChunk:
+class IndexedChunk(ChunkMetadata):
     """The exact text and ID accepted by Chroma during document indexing."""
 
     chunk_id: str
@@ -38,6 +38,7 @@ class IndexedChunk:
     knowledge_base_id: str
     chunk_index: int
     content: str
+    filename: str
 
 
 class RerankerError(RuntimeError):
@@ -170,8 +171,7 @@ class OpenAICompatibleEmbeddingFunction(EmbeddingFunction[Documents]):
 
     @staticmethod
     def build_from_config(config: dict[str, Any]) -> EmbeddingFunction[Documents]:
-        # Chroma probes this method to determine whether the function is legacy.
-        # The real client is always injected by RAGStore; do not persist its secret.
+        # Required Chroma embedding configuration hook. The injected client owns secrets.
         return OpenAICompatibleEmbeddingFunction(
             base_url=str(config["base_url"]),
             api_key=os.environ.get("RAG_LLM_API_KEY", ""),
@@ -239,17 +239,23 @@ class RAGStore:
             terms.append({"document_id": document_ids[0]} if len(document_ids) == 1 else {"document_id": {"$in": document_ids}})
         return terms[0] if len(terms) == 1 else {"$and": terms}
 
-    def index(self, *, knowledge_base_id: str, document_id: str, filename: str, text: str, chunk_size: int, chunk_overlap: int, digest: str) -> int:
-        splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap, separators=["\n\n", "\n", "。", ". ", " ", ""])
-        chunks = [chunk.strip() for chunk in splitter.split_text(text) if chunk.strip()]
-        if not chunks:
+    def index_drafts(
+        self, *, knowledge_base_id: str, document_id: str, filename: str,
+        drafts: Sequence[ChunkDraft], digest: str, chunk_strategy: ChunkStrategy,
+    ) -> int:
+        if not drafts or any(not draft.content.strip() for draft in drafts):
             raise ValueError("The document did not contain extractable text.")
         self.collection.add(
-            ids=[f"{document_id}:{index}" for index in range(len(chunks))],
-            documents=chunks,
-            metadatas=[{"knowledge_base_id": knowledge_base_id, "document_id": document_id, "filename": filename, "sha256": digest, "chunk_index": index} for index in range(len(chunks))],
+            ids=[f"{document_id}:{index}" for index in range(len(drafts))],
+            documents=[draft.content for draft in drafts],
+            metadatas=[{
+                **draft.chroma_metadata(), "chunk_strategy": chunk_strategy,
+                "chunker_version": CHUNKER_VERSIONS[chunk_strategy],
+                "knowledge_base_id": knowledge_base_id, "document_id": document_id,
+                "filename": filename, "sha256": digest, "chunk_index": index,
+            } for index, draft in enumerate(drafts)],
         )
-        return len(chunks)
+        return len(drafts)
 
     @staticmethod
     def similarity_score(distance: float | None) -> float:
@@ -264,7 +270,7 @@ class RAGStore:
         # A CrossEncoder needs a larger candidate set to improve the final top-k order.
         candidate_count = min(100, top_k * 4) if rerank else top_k
         result = self.collection.query(query_texts=[query], n_results=candidate_count, where=self._where(knowledge_base_id, document_ids), include=["documents", "metadatas", "distances"])
-        chunks = [RetrievedChunk(chunk_id=chunk_id, document_id=str(metadata["document_id"]), knowledge_base_id=str(metadata["knowledge_base_id"]), filename=str(metadata["filename"]), content=document, distance=distance, chunk_index=int(metadata["chunk_index"])) for chunk_id, document, metadata, distance in zip(result.get("ids", [[]])[0], result.get("documents", [[]])[0], result.get("metadatas", [[]])[0], result.get("distances", [[]])[0], strict=True)]
+        chunks = [RetrievedChunk(chunk_id=chunk_id, document_id=str(metadata["document_id"]), knowledge_base_id=str(metadata["knowledge_base_id"]), filename=str(metadata["filename"]), content=document, distance=distance, chunk_index=int(metadata["chunk_index"]), **ChunkMetadata.from_chroma(metadata)) for chunk_id, document, metadata, distance in zip(result.get("ids", [[]])[0], result.get("documents", [[]])[0], result.get("metadatas", [[]])[0], result.get("distances", [[]])[0], strict=True)]
         if score_threshold is not None:
             chunks = [chunk for chunk in chunks if self.similarity_score(chunk.distance) >= score_threshold]
         if rerank and chunks:
@@ -292,6 +298,8 @@ class RAGStore:
                 knowledge_base_id=str(metadata["knowledge_base_id"]),
                 chunk_index=int(metadata["chunk_index"]),
                 content=content,
+                filename=str(metadata["filename"]),
+                **ChunkMetadata.from_chroma(metadata),
             )
             for chunk_id, content, metadata in zip(
                 payload.get("ids", []), payload.get("documents", []), payload.get("metadatas", []), strict=True

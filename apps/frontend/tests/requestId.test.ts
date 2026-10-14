@@ -2,28 +2,28 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { requestId } from "../src/lib/requestId";
 
-const UUID_V4 =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const SORTABLE_REQUEST_ID = /^\d{14}_[0-9a-f]{8}$/;
 
 describe("request id", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
-  it("produces a uuid v4 in a secure context", () => {
-    expect(requestId()).toMatch(UUID_V4);
+  it("produces the backend-compatible timestamp and random suffix", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 9, 14, 10, 30, 45));
+    expect(requestId()).toMatch(/^20261014103045_[0-9a-f]{8}$/);
   });
 
-  it("still produces a uuid v4 when randomUUID is unavailable", () => {
-    // Over plain HTTP from a LAN address crypto.randomUUID is undefined while
-    // crypto.getRandomValues remains usable.
+  it("uses getRandomValues when randomUUID is unavailable", () => {
     const realCrypto = globalThis.crypto;
     vi.stubGlobal("crypto", {
       getRandomValues: realCrypto.getRandomValues.bind(realCrypto),
     });
 
     const first = requestId();
-    expect(first).toMatch(UUID_V4);
+    expect(first).toMatch(SORTABLE_REQUEST_ID);
     expect(first).not.toBe(requestId());
   });
 });

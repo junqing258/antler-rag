@@ -4,7 +4,6 @@ import { useRouter } from "vue-router";
 import {
   DocumentAdd,
   Files,
-  FolderAdd,
   Search,
   Delete,
   View,
@@ -23,6 +22,10 @@ import ChunkViewerModal from "../components/ChunkViewerModal.vue";
 
 const items = ref<any[]>([]);
 const name = ref("");
+const description = ref("");
+const chunkStrategy = ref("recursive");
+const chunkSize = ref(900);
+const chunkOverlap = ref(150);
 const error = ref("");
 const selectedKb = ref<any>(null);
 const docs = ref<any[]>([]);
@@ -33,6 +36,10 @@ const chunkModalVisible = ref(false);
 const activeDoc = ref<any>(null);
 const docChunks = ref<any[]>([]);
 const chunkLoading = ref(false);
+const chunkPage = ref(1);
+const chunkCount = ref(0);
+const chunkPageSize = 20;
+let chunkRequest = 0;
 const showCreate = ref(false);
 const cardView = ref(true);
 const filter = ref("");
@@ -48,12 +55,26 @@ async function load() {
 }
 async function create() {
   if (!name.value.trim()) return;
+  if (chunkOverlap.value >= chunkSize.value) {
+    ElMessage.error("重叠必须小于块大小");
+    return;
+  }
   try {
     const newKb = await api<any>("/api/v1/knowledge-bases", {
       method: "POST",
-      body: JSON.stringify({ name: name.value }),
+      body: JSON.stringify({
+        name: name.value,
+        description: description.value,
+        chunk_strategy: chunkStrategy.value,
+        chunk_size: chunkSize.value,
+        chunk_overlap: chunkOverlap.value,
+      }),
     });
     name.value = "";
+    description.value = "";
+    chunkStrategy.value = "recursive";
+    chunkSize.value = 900;
+    chunkOverlap.value = 150;
     showCreate.value = false;
     ElMessage.success("知识库新建成功");
     await load();
@@ -122,21 +143,37 @@ async function confirmRemove(doc: any) {
     );
     ElMessage.success("文档已成功删除");
     await fetchDocuments();
-  } catch {}
+  } catch (e: any) {
+    if (e instanceof Error) ElMessage.error(e.message || "删除失败");
+  }
 }
 async function inspectChunks(doc: any) {
   activeDoc.value = doc;
   chunkModalVisible.value = true;
+  chunkCount.value = 0;
+  await fetchChunks(1);
+}
+async function fetchChunks(page: number) {
+  const requestId = ++chunkRequest;
+  chunkPage.value = page;
   chunkLoading.value = true;
   docChunks.value = [];
   try {
     const res = await api<any>(
-      `/api/v1/knowledge-bases/${selectedKb.value.id}/documents/${doc.id}`,
+      `/api/v1/knowledge-bases/${activeDoc.value.knowledge_base_id}/documents/${activeDoc.value.id}/chunks?offset=${(page - 1) * chunkPageSize}&limit=${chunkPageSize}`,
     );
-    docChunks.value = res.chunks || res.items || [];
+    if (requestId !== chunkRequest) return;
+    docChunks.value = res.items || [];
+    chunkCount.value = res.total || 0;
+  } catch (e: any) {
+    if (requestId === chunkRequest)
+      ElMessage.error(e.message || "切片加载失败");
   } finally {
-    chunkLoading.value = false;
+    if (requestId === chunkRequest) chunkLoading.value = false;
   }
+}
+function strategyLabel(kb: any) {
+  return kb.chunk_strategy === "structure" ? "结构分块" : "递归分块";
 }
 const filteredItems = computed(() =>
   !filter.value
@@ -179,7 +216,7 @@ onMounted(load);
           <el-icon><Operation /></el-icon>批量重构索引</button
         ><button>＜＞ API 文档 ↗</button
         ><el-button type="primary" @click="showCreate = !showCreate"
-          ><el-icon><Plus /></el-icon>+ 新建知识库 (New KB)</el-button
+          ><el-icon><Plus /></el-icon> 新建知识库 (New KB)</el-button
         >
       </div>
     </header>
@@ -190,13 +227,92 @@ onMounted(load);
       show-icon
       class="notice"
     />
-    <form v-if="showCreate" class="create-kb" @submit.prevent="create">
-      <el-input
-        v-model="name"
-        autofocus
-        placeholder="输入新知识库名称..."
-      /><el-button type="primary" native-type="submit">创建知识库</el-button
-      ><el-button @click="showCreate = false">取消</el-button>
+    <form
+      v-if="showCreate"
+      class="create-kb"
+      aria-labelledby="create-kb-title"
+      @submit.prevent="create"
+    >
+      <header class="create-kb-heading">
+        <span class="create-kb-icon"
+          ><el-icon><Collection /></el-icon
+        ></span>
+        <div>
+          <h2 id="create-kb-title">新建知识库</h2>
+          <p>填写基本信息，并设置文档的切片方式。</p>
+        </div>
+      </header>
+      <div class="create-kb-fields">
+        <div class="create-kb-field">
+          <label for="kb-name"
+            >知识库名称 <span class="required">*</span></label
+          >
+          <el-input
+            id="kb-name"
+            v-model="name"
+            autofocus
+            required
+            placeholder="例如：产品文档、内部知识库"
+          />
+        </div>
+        <div class="create-kb-field">
+          <label for="kb-description">知识库描述 <span>选填</span></label>
+          <el-input
+            id="kb-description"
+            v-model="description"
+            placeholder="简要描述知识库的内容或用途"
+          />
+        </div>
+      </div>
+      <fieldset class="create-kb-chunking">
+        <legend>切片配置 <span>创建后固定</span></legend>
+        <div class="create-kb-chunk-fields">
+          <div class="create-kb-field">
+            <label for="kb-chunk-strategy">切片策略</label>
+            <el-select
+              id="kb-chunk-strategy"
+              v-model="chunkStrategy"
+              aria-label="切片策略"
+              aria-describedby="kb-chunk-help"
+            >
+              <el-option value="recursive" label="递归分块" />
+              <el-option value="structure" label="结构分块" />
+            </el-select>
+          </div>
+          <div class="create-kb-field">
+            <label for="kb-chunk-size">块大小 <span>字符</span></label>
+            <el-input-number
+              id="kb-chunk-size"
+              v-model="chunkSize"
+              :min="100"
+              :max="4000"
+            />
+          </div>
+          <div class="create-kb-field">
+            <label for="kb-chunk-overlap">重叠大小 <span>字符</span></label>
+            <el-input-number
+              id="kb-chunk-overlap"
+              v-model="chunkOverlap"
+              :min="0"
+              :max="Math.min(1000, chunkSize - 1)"
+            />
+          </div>
+        </div>
+        <p id="kb-chunk-help" class="create-kb-help">
+          <template v-if="chunkStrategy === 'structure'">
+            按标题、章节和段落分块；TXT 按段落，PDF 按页或段落。
+          </template>
+          <template v-else>
+            按设定的块大小递归拆分文本，相邻切片保留重叠内容以衔接上下文。
+          </template>
+        </p>
+      </fieldset>
+      <footer class="create-kb-actions">
+        <el-button @click="showCreate = false">取消</el-button>
+        <el-button type="primary" native-type="submit">
+          <el-icon><Plus /></el-icon>创建知识库
+        </el-button>
+      </footer>
     </form>
     <div class="metrics">
       <article>
@@ -215,7 +331,9 @@ onMounted(load);
         <span>向量分块 (Chunks)</span><el-icon><Coin /></el-icon
         ><strong>{{ chunkTotal.toLocaleString() }}</strong
         ><b>● 全部嵌入</b>
-        <footer>平均切片大小 <em>512 tokens</em></footer>
+        <footer>
+          所选库块大小 <em>{{ selectedKb?.chunk_size ?? "—" }} 字符</em>
+        </footer>
       </article>
       <article>
         <span>向量存储 (HNSW)</span><el-icon><Box /></el-icon
@@ -252,7 +370,7 @@ onMounted(load);
     </div>
     <div class="kb-cards" :class="{ list: !cardView }">
       <article
-        v-for="(item, index) in filteredItems"
+        v-for="item in filteredItems"
         :key="item.id"
         class="kb-card"
         :class="{ selected: selectedKb?.id === item.id }"
@@ -283,14 +401,21 @@ onMounted(load);
             >
           </div>
           <div><small>嵌入模型</small><b>text-embedding-3-sm</b></div>
-          <div><small>切片策略</small><b>RecursiveChar 500tok</b></div>
+          <div>
+            <small>切片策略</small
+            ><b
+              >{{ strategyLabel(item) }} · {{ item.chunk_size }} 字符 · 重叠
+              {{ item.chunk_overlap }}</b
+            >
+          </div>
           <div><small>检索模式</small><b>Dense Vector Cosine</b></div>
         </section>
         <footer>
           <span>更新于：刚刚</span
           ><button type="button" @click.stop="testRetrieval(item)">
             <el-icon><Search /></el-icon>测试检索</button
-          ><button type="button" @click.stop="manageDocuments(item)">文档管理</button
+          ><button type="button" @click.stop="manageDocuments(item)">
+            文档管理</button
           ><!-- <i>⋮</i> -->
         </footer>
       </article>
@@ -302,7 +427,11 @@ onMounted(load);
       <header>
         <div>
           <h2>「{{ selectedKb.name }}」文档集</h2>
-          <p>上传文件后，系统将自动清洗分块并注入 Chroma 向量数据库。</p>
+          <p>
+            {{ strategyLabel(selectedKb) }} · 块大小
+            {{ selectedKb.chunk_size }} 字符 · 重叠
+            {{ selectedKb.chunk_overlap }} 字符
+          </p>
         </div>
         <span>{{ docs.length }} 个文档</span>
       </header>
@@ -351,6 +480,10 @@ onMounted(load);
       :document="activeDoc"
       :chunks="docChunks"
       :loading="chunkLoading"
+      :total="chunkCount"
+      :page="chunkPage"
+      :page-size="chunkPageSize"
+      @page-change="fetchChunks"
     />
   </section>
 </template>
@@ -432,10 +565,122 @@ onMounted(load);
   height: 40px;
 }
 .create-kb {
+  margin: 0 0 28px;
+  padding: 24px;
+  background: #fff;
+  border: 1px solid #dbe3ed;
+  border-radius: 14px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.03);
+}
+.create-kb-heading {
   display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.create-kb-icon {
+  display: grid;
+  flex: 0 0 40px;
+  height: 40px;
+  place-items: center;
+  color: #0284c7;
+  background: #f0f9ff;
+  border-radius: 10px;
+  font-size: 20px;
+}
+.create-kb-heading h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 600;
+}
+.create-kb-heading p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.create-kb-fields,
+.create-kb-chunk-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.create-kb-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+.create-kb-field label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+}
+.create-kb-field label span {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 400;
+}
+.create-kb-field label .required {
+  color: #ef4444;
+}
+.create-kb-field :deep(.el-select),
+.create-kb-field :deep(.el-input-number) {
+  width: 100%;
+}
+.create-kb-field :deep(.el-input__wrapper),
+.create-kb-field :deep(.el-select__wrapper) {
+  min-height: 40px;
+}
+.create-kb-chunking {
+  min-width: 0;
+  margin: 24px 0 0;
+  padding: 16px 20px 18px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+.create-kb-chunking legend {
+  padding: 0 6px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+}
+.create-kb-chunking legend span {
+  margin-left: 8px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 400;
+}
+.create-kb-chunk-fields {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.create-kb-help {
+  margin: 14px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.create-kb-actions {
+  display: flex;
+  justify-content: flex-end;
   gap: 10px;
-  max-width: 520px;
-  margin: -10px 0 20px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #f1f5f9;
+}
+.create-kb-actions .el-button {
+  height: 38px;
+  margin-left: 0;
+  padding: 0 18px;
+}
+.create-kb-actions .el-icon {
+  margin-right: 5px;
 }
 .metrics {
   display: grid;
@@ -749,6 +994,17 @@ onMounted(load);
 @media (max-width: 720px) {
   .kb-page {
     max-width: 100%;
+  }
+  .create-kb {
+    padding: 20px 16px;
+  }
+  .create-kb-fields,
+  .create-kb-chunk-fields {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .create-kb-chunking {
+    padding: 14px;
   }
   .metrics,
   .kb-cards {

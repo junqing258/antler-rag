@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from uuid import uuid4
 
 from db import Database
@@ -19,27 +20,37 @@ class GraphStore:
         with self.database.connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
-                ready = conn.execute(
-                    "SELECT 1 FROM documents WHERE id=? AND knowledge_base_id=? AND status='ready'",
-                    (document_id, knowledge_base_id),
-                ).fetchone()
-                if not ready:
-                    raise ValueError("Graph state can only be recorded for a ready document")
-                conn.execute(
-                    """INSERT INTO graph_document_states(
-                        knowledge_base_id,document_id,build_id,source_sha256,status,
-                        extractor_model,extractor_version,indexed_at,error_code,updated_at
-                    ) VALUES(?,?,NULL,?,'not_built',NULL,NULL,NULL,NULL,?)
-                    ON CONFLICT(knowledge_base_id,document_id) DO UPDATE SET
-                        build_id=NULL,source_sha256=excluded.source_sha256,status='not_built',
-                        extractor_model=NULL,extractor_version=NULL,indexed_at=NULL,
-                        error_code=NULL,updated_at=excluded.updated_at""",
-                    (knowledge_base_id, document_id, source_sha256, now()),
+                self.mark_not_built_in_tx(
+                    conn, knowledge_base_id=knowledge_base_id,
+                    document_id=document_id, source_sha256=source_sha256,
                 )
                 conn.commit()
             except Exception:
                 conn.rollback()
                 raise
+
+    def mark_not_built_in_tx(
+        self, conn: sqlite3.Connection, *, knowledge_base_id: str,
+        document_id: str, source_sha256: str,
+    ) -> None:
+        """Use the caller's transaction; never acquire or commit a second connection."""
+        ready = conn.execute(
+            "SELECT 1 FROM documents WHERE id=? AND knowledge_base_id=? AND status='ready' AND sha256=?",
+            (document_id, knowledge_base_id, source_sha256),
+        ).fetchone()
+        if not ready:
+            raise ValueError("Graph state can only be recorded for a ready document")
+        conn.execute(
+            """INSERT INTO graph_document_states(
+                knowledge_base_id,document_id,build_id,source_sha256,status,
+                extractor_model,extractor_version,indexed_at,error_code,updated_at
+            ) VALUES(?,?,NULL,?,'not_built',NULL,NULL,NULL,NULL,?)
+            ON CONFLICT(knowledge_base_id,document_id) DO UPDATE SET
+                build_id=NULL,source_sha256=excluded.source_sha256,status='not_built',
+                extractor_model=NULL,extractor_version=NULL,indexed_at=NULL,
+                error_code=NULL,updated_at=excluded.updated_at""",
+            (knowledge_base_id, document_id, source_sha256, now()),
+        )
 
     def document_states(self, knowledge_base_id: str) -> list[dict[str, object]]:
         return self.database.many(

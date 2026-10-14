@@ -9,6 +9,7 @@ from uuid import uuid4
 from pwdlib import PasswordHash
 
 from rag import Evidence, RetrievedChunk
+from rag.store import IndexedChunk
 
 password_hash = PasswordHash.recommended()
 ROLES = {"admin", "editor", "viewer"}
@@ -48,14 +49,15 @@ def public_key(key: dict[str, Any]) -> dict[str, Any]:
     return item
 
 
-def chunk_payload(chunk: RetrievedChunk | Evidence) -> dict[str, str | float | int | None]:
+def chunk_payload(chunk: RetrievedChunk | Evidence | IndexedChunk) -> dict[str, Any]:
     return {
         "chunk_id": chunk.chunk_id,
         "document_id": chunk.document_id,
         "knowledge_base_id": chunk.knowledge_base_id,
         "filename": chunk.filename,
         "content": chunk.content,
-        "distance": chunk.distance,
+        "distance": getattr(chunk, "distance", None),
         "chunk_index": chunk.chunk_index,
-        "rerank_score": chunk.rerank_score,
+        "rerank_score": getattr(chunk, "rerank_score", None),
+        **chunk.structure_payload(),
     }

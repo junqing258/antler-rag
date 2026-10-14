@@ -53,7 +53,7 @@ class DuplicateRetriever:
         ]
 
 
-def test_vector_retriever_preserves_legacy_store_arguments_and_provenance() -> None:
+def test_vector_retriever_passes_store_arguments_and_provenance() -> None:
     store = FakeStore()
     service = RetrievalService(VectorRetriever(store))  # type: ignore[arg-type]
 

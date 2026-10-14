@@ -1,8 +1,7 @@
 """Application composition root.
 
 HTTP endpoints live in :mod:`routers`; this module owns only process lifecycle,
-cross-cutting middleware, and static-file mounting. It continues to export the
-request schemas used by older integrations.
+cross-cutting middleware, and static-file mounting.
 """
 
 from __future__ import annotations
@@ -18,21 +17,6 @@ from fastapi.staticfiles import StaticFiles
 
 from core.config import Settings
 from db import Database
-from models.schemas import (
-    AgenticRagRequest,
-    ApiKeyCreate,
-    ChangePasswordRequest,
-    ChatRequest,
-    GraphRebuildRequest,
-    GraphSearchRequest,
-    KnowledgeBaseCreate,
-    KnowledgeBasePatch,
-    LoginRequest,
-    Principal,
-    RetrieveRequest,
-    UserCreate,
-    UserPatch,
-)
 from rag import RAGStore, RetrievalService
 from rag.agentic import AgentService
 from rag.graph_build import GraphBuildService
@@ -40,18 +24,7 @@ from rag.graph_store import GraphStore
 from routers import ALL_ROUTERS
 from services.errors import APIError
 from utils.logging import configure_logging
-from utils.security import (
-    ROLES,
-    SCOPES,
-    WRITE_ROLES,
-    chunk_payload,
-    expiry,
-    new_request_id,
-    password_hash,
-    public_key,
-    public_user,
-    token_digest,
-)
+from utils.security import new_request_id, password_hash
 
 logger = configure_logging()
 
@@ -62,12 +35,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         database = Database(settings.db_path)
-        if database.schema_version() == 1:
-            raise RuntimeError(
-                "Legacy multi-tenant data detected; stop the service, back up the complete data directory, "
-                "then run `python -m migrate_single_workspace --data-dir ... --confirm`"
-            )
-        database.migrate()
+        database.initialize()
         if settings.bootstrap_admin_email and settings.bootstrap_admin_password:
             database.bootstrap_admin(
                 settings.bootstrap_admin_email,
@@ -141,32 +109,3 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
 
 app = create_app()
-
-__all__ = [
-    "ROLES",
-    "SCOPES",
-    "WRITE_ROLES",
-    "APIError",
-    "AgenticRagRequest",
-    "ApiKeyCreate",
-    "ChangePasswordRequest",
-    "ChatRequest",
-    "GraphRebuildRequest",
-    "GraphSearchRequest",
-    "KnowledgeBaseCreate",
-    "KnowledgeBasePatch",
-    "LoginRequest",
-    "Principal",
-    "RetrieveRequest",
-    "UserCreate",
-    "UserPatch",
-    "app",
-    "chunk_payload",
-    "create_app",
-    "expiry",
-    "new_request_id",
-    "password_hash",
-    "public_key",
-    "public_user",
-    "token_digest",
-]

@@ -42,7 +42,8 @@ def create_knowledge_base(
         raise APIError("validation_error", "chunk_overlap must be smaller than chunk_size", 422)
     try:
         kb = database.create_knowledge_base(
-            payload.name, payload.description, payload.chunk_size, payload.chunk_overlap
+            payload.name, payload.description, payload.chunk_size, payload.chunk_overlap,
+            payload.chunk_strategy
         )
     except Exception as error:
         raise APIError("conflict", "A knowledge base with this name already exists", 409) from error

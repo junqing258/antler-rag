@@ -5,9 +5,7 @@ import {
   ChatDotRound,
   Document,
   Search,
-  Operation,
   CopyDocument,
-  Promotion,
   Cpu,
   DataAnalysis,
   RefreshLeft,
@@ -20,6 +18,7 @@ import { ElMessage } from "element-plus";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { api } from "../lib/request";
+import ChunkProvenance from "../components/ChunkProvenance.vue";
 import ApiCodeSnippetModal from "../components/ApiCodeSnippetModal.vue";
 import { authState } from "../composables/useAuth";
 
@@ -45,11 +44,16 @@ const selectedKb = computed(() =>
   kbs.value.find((item) => item.id === kb.value),
 );
 const renderedAnswer = computed(() =>
-  DOMPurify.sanitize(marked.parse(chatAnswer.value, { async: false }) as string),
+  DOMPurify.sanitize(
+    marked.parse(chatAnswer.value, { async: false }) as string,
+  ),
 );
 onMounted(async () => {
   try {
-    [kbs.value, features.value] = [(await api<any>("/api/v1/knowledge-bases")).items || [], await api<any>("/api/v1/features")];
+    [kbs.value, features.value] = [
+      (await api<any>("/api/v1/knowledge-bases")).items || [],
+      await api<any>("/api/v1/features"),
+    ];
     const preset = route.query.kb;
     kb.value =
       preset && kbs.value.some((item) => item.id === preset)
@@ -61,16 +65,34 @@ onMounted(async () => {
 });
 watch(kb, async (knowledgeBaseId) => {
   if (!knowledgeBaseId || !features.value.modes?.graph?.enabled) return;
-  try { graphStates.value = (await api<any>(`/api/v1/knowledge-bases/${knowledgeBaseId}/graph/status`)).documents || []; } catch { graphStates.value = []; }
+  try {
+    graphStates.value =
+      (
+        await api<any>(
+          `/api/v1/knowledge-bases/${knowledgeBaseId}/graph/status`,
+        )
+      ).documents || [];
+  } catch {
+    graphStates.value = [];
+  }
 });
 async function rebuildGraph() {
   if (!kb.value) return;
   rebuilding.value = true;
   try {
-    await api(`/api/v1/knowledge-bases/${kb.value}/graph/rebuild`, { method: "POST", body: JSON.stringify({ all_documents: true }) });
-    graphStates.value = (await api<any>(`/api/v1/knowledge-bases/${kb.value}/graph/status`)).documents || [];
+    await api(`/api/v1/knowledge-bases/${kb.value}/graph/rebuild`, {
+      method: "POST",
+      body: JSON.stringify({ all_documents: true }),
+    });
+    graphStates.value =
+      (await api<any>(`/api/v1/knowledge-bases/${kb.value}/graph/status`))
+        .documents || [];
     ElMessage.success("图谱重建已完成");
-  } catch (e: any) { error.value = e.message || "图谱重建失败"; } finally { rebuilding.value = false; }
+  } catch (e: any) {
+    error.value = e.message || "图谱重建失败";
+  } finally {
+    rebuilding.value = false;
+  }
 }
 async function executeSearch() {
   if (!kb.value || !query.value.trim()) return;
@@ -93,10 +115,25 @@ async function executeSearch() {
       });
       results.value = res.results || [];
     } else if (mode.value === "graph") {
-      const res = await api<any>("/api/v1/graph/search", { method: "POST", body: JSON.stringify({ knowledge_base_id: kb.value, query: query.value, top_k: topK.value }) });
+      const res = await api<any>("/api/v1/graph/search", {
+        method: "POST",
+        body: JSON.stringify({
+          knowledge_base_id: kb.value,
+          query: query.value,
+          top_k: topK.value,
+        }),
+      });
       results.value = res.results || [];
     } else if (mode.value === "agentic") {
-      const res = await api<any>("/api/v1/agentic-rag", { method: "POST", body: JSON.stringify({ knowledge_base_id: kb.value, message: query.value, top_k: topK.value, include_trace: true }) });
+      const res = await api<any>("/api/v1/agentic-rag", {
+        method: "POST",
+        body: JSON.stringify({
+          knowledge_base_id: kb.value,
+          message: query.value,
+          top_k: topK.value,
+          include_trace: true,
+        }),
+      });
       chatAnswer.value = res.answer || res.detail || "收到召回结果：";
       chatSources.value = res.sources || [];
     } else {
@@ -110,8 +147,8 @@ async function executeSearch() {
           rerank: rerank.value,
         }),
       });
-      chatAnswer.value = res.answer || res.message || "收到召回结果：";
-      chatSources.value = res.sources || res.results || [];
+      chatAnswer.value = res.answer || res.detail || "收到召回结果：";
+      chatSources.value = res.sources || [];
     }
   } catch (e: any) {
     error.value = e.message || "请求失败";
@@ -143,9 +180,7 @@ function useExample(text: string) {
           ><b>/</b><strong>检索测试</strong>
         </div>
         <h1>检索测试</h1>
-        <p>
-          实时调试知识库的向量召回、相似度过滤与可选的神经重排效果
-        </p>
+        <p>实时调试知识库的向量召回、相似度过滤与可选的神经重排效果</p>
       </div>
       <div class="heading-buttons">
         <button @click="showCodeModal = true">＜＞ API 代码预览</button
@@ -181,8 +216,19 @@ function useExample(text: string) {
           /></el-select>
           <p class="cluster-note">Cluster Node: <b>local-chroma-01</b></p>
           <div v-if="features.modes?.graph?.enabled" class="cluster-note">
-            图谱状态：<b>{{ graphStates.some((item) => item.status === 'ready') ? '可查询' : '尚未构建' }}</b>
-            <el-button v-if="isAdmin" link type="primary" :loading="rebuilding" @click="rebuildGraph">重建图谱</el-button>
+            图谱状态：<b>{{
+              graphStates.some((item) => item.status === "ready")
+                ? "可查询"
+                : "尚未构建"
+            }}</b>
+            <el-button
+              v-if="isAdmin"
+              link
+              type="primary"
+              :loading="rebuilding"
+              @click="rebuildGraph"
+              >重建图谱</el-button
+            >
           </div>
           <div class="kb-stats">
             <div><small>文档总数</small><b>已连接</b></div>
@@ -232,19 +278,28 @@ function useExample(text: string) {
             >
               向量检索<br />(Vector)
             </button>
-            <button
-              :class="{ active: mode === 'chat' }"
-              @click="mode = 'chat'"
-            >
+            <button :class="{ active: mode === 'chat' }" @click="mode = 'chat'">
               RAG 问答<br />(Chat)
             </button>
-            <button v-if="features.modes?.agentic?.enabled" :class="{ active: mode === 'agentic' }" @click="mode = 'agentic'">受控 RAG<br />（Agentic）</button>
-            <button v-if="features.modes?.graph?.enabled && features.modes?.graph?.ready" :class="{ active: mode === 'graph' }" @click="mode = 'graph'">图谱检索</button>
+            <button
+              v-if="features.modes?.agentic?.enabled"
+              :class="{ active: mode === 'agentic' }"
+              @click="mode = 'agentic'"
+            >
+              受控 RAG<br />（Agentic）
+            </button>
+            <button
+              v-if="
+                features.modes?.graph?.enabled && features.modes?.graph?.ready
+              "
+              :class="{ active: mode === 'graph' }"
+              @click="mode = 'graph'"
+            >
+              图谱检索
+            </button>
           </div>
           <div class="topk-row">
-            <div>
-              <b>TOP-K 返回限制</b><span>最终返回的结果数量</span>
-            </div>
+            <div><b>TOP-K 返回限制</b><span>最终返回的结果数量</span></div>
             <div>
               <button
                 v-for="number in [3, 5, 10, 20]"
@@ -283,7 +338,9 @@ function useExample(text: string) {
           </div>
           <div class="metadata">
             <label>元数据硬过滤 (METADATA FILTER)</label
-            ><code>knowledge_base_id = "selected" &amp;&amp; status = "active"</code>
+            ><code
+              >knowledge_base_id = "selected" &amp;&amp; status = "active"</code
+            >
           </div>
           <el-button
             type="primary"
@@ -313,7 +370,8 @@ function useExample(text: string) {
             ><button>{ } JSON</button>
           </footer>
         </article>
-        <template v-if="(mode === 'retrieve' || mode === 'graph') && results.length"
+        <template
+          v-if="(mode === 'retrieve' || mode === 'graph') && results.length"
           ><article
             v-for="(result, index) in results"
             :key="result.chunk_id || index"
@@ -331,9 +389,16 @@ function useExample(text: string) {
               <div class="score">
                 Score: {{ (similarity(result.distance) / 100).toFixed(3)
                 }}<small>（Cosine Dist: {{ result.distance ?? "—" }}）</small
-                ><small v-if="result.rerank_score !== null && result.rerank_score !== undefined">Rerank: {{ result.rerank_score.toFixed(3) }}</small>
+                ><small
+                  v-if="
+                    result.rerank_score !== null &&
+                    result.rerank_score !== undefined
+                  "
+                  >Rerank: {{ result.rerank_score.toFixed(3) }}</small
+                >
               </div>
             </header>
+            <ChunkProvenance :chunk="result" />
             <div class="result-content">{{ result.content }}</div>
             <footer>
               <div>
@@ -343,7 +408,7 @@ function useExample(text: string) {
                     result.chunk_id || String(index + 1).padStart(4, "0")
                   }}</b
                 ><i>•</i
-                ><b>{{ result.content?.length || 0 }}</b> Tokens<i>•</i>Cosine
+                ><b>{{ result.content?.length || 0 }}</b> 字符<i>•</i>Cosine
                 Dist: <strong>{{ result.distance ?? "—" }}</strong>
               </div>
               <div>
@@ -356,7 +421,10 @@ function useExample(text: string) {
           </article></template
         >
         <template
-          v-else-if="(mode === 'chat' || mode === 'agentic') && (chatAnswer || chatSources.length)"
+          v-else-if="
+            (mode === 'chat' || mode === 'agentic') &&
+            (chatAnswer || chatSources.length)
+          "
           ><article class="chat-answer">
             <header>
               <h2>
@@ -364,8 +432,12 @@ function useExample(text: string) {
               </h2>
               <span>RAG Model Complete</span>
             </header>
-            <!-- eslint-disable-next-line vue/no-v-html -- 内容经 DOMPurify 消毒 -->
-            <div class="chat-answer-body markdown-body" v-html="renderedAnswer"></div>
+            <!-- eslint-disable vue/no-v-html -- 内容经 DOMPurify 消毒 -->
+            <div
+              class="chat-answer-body markdown-body"
+              v-html="renderedAnswer"
+            ></div>
+            <!-- eslint-enable vue/no-v-html -->
           </article>
           <article
             v-for="(source, index) in chatSources"
@@ -381,6 +453,7 @@ function useExample(text: string) {
                 </h2>
               </div>
             </header>
+            <ChunkProvenance :chunk="source" />
             <div class="result-content">{{ source.content }}</div>
             <footer>
               <button @click="copyChunk(source.content)">

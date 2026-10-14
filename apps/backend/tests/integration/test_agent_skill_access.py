@@ -5,7 +5,7 @@ from zipfile import ZipFile
 from fastapi.testclient import TestClient
 
 from app import create_app
-from config import Settings
+from core.config import Settings
 
 
 def test_kb_read_scope_allows_api_key_listing_without_changing_session_access(

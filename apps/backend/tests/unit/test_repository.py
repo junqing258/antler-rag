@@ -7,8 +7,8 @@ from db import Database
 
 def test_bootstrap_creates_global_admin_without_default_knowledge_base(tmp_path: Path) -> None:
     db = Database(tmp_path / "app.sqlite3")
-    db.migrate()
-    assert db.migrate() == []
+    db.initialize()
+    assert db.initialize() is None
     assert db.bootstrap_admin("admin@example.com", "hash")
     admin = db.user_by_email("admin@example.com")
     assert admin and admin["role"] == "admin"
@@ -17,7 +17,7 @@ def test_bootstrap_creates_global_admin_without_default_knowledge_base(tmp_path:
 
 def test_last_active_admin_cannot_be_downgraded_or_disabled(tmp_path: Path) -> None:
     db = Database(tmp_path / "app.sqlite3")
-    db.migrate()
+    db.initialize()
     db.bootstrap_admin("admin@example.com", "hash")
     admin = db.user_by_email("admin@example.com")
     assert admin
@@ -28,9 +28,11 @@ def test_last_active_admin_cannot_be_downgraded_or_disabled(tmp_path: Path) -> N
 
 
 @pytest.mark.parametrize("stale_status", ["deleted", "failed"])
-def test_reupload_reuses_a_deleted_or_failed_document_record(tmp_path: Path, stale_status: str) -> None:
+def test_reupload_reuses_a_deleted_or_failed_document_record(
+    tmp_path: Path, stale_status: str
+) -> None:
     db = Database(tmp_path / "app.sqlite3")
-    db.migrate()
+    db.initialize()
     db.bootstrap_admin("admin@example.com", "hash")
     admin = db.user_by_email("admin@example.com")
     assert admin
@@ -51,25 +53,3 @@ def test_reupload_reuses_a_deleted_or_failed_document_record(tmp_path: Path, sta
     assert reuploaded["chunk_count"] == 0
     assert reuploaded["status"] == "pending"
     assert reuploaded["error_message"] is None
-
-
-def test_v2_migrates_multiple_default_knowledge_bases_and_revokes_credentials(tmp_path: Path) -> None:
-    db_path = tmp_path / "app.sqlite3"
-    legacy = Database(db_path)
-    migration = Path(__file__).parents[2] / "src/db/migrations/001_initial.sql"
-    with legacy.connection() as conn:
-        conn.executescript(migration.read_text())
-        conn.execute("INSERT INTO schema_migrations(version,applied_at) VALUES(1,'now')")
-        conn.execute("INSERT INTO users VALUES('u','a@example.com','hash','active',1,0,NULL,'now','now')")
-        for tenant_id in ("t1", "t2"):
-            conn.execute("INSERT INTO tenants VALUES(?,?, 'active','now','now')", (tenant_id, tenant_id))
-            conn.execute("INSERT INTO knowledge_bases VALUES(?,?, 'Shared', '',1,'active',900,150,'now','now')", (f"kb-{tenant_id}", tenant_id))
-        conn.execute("INSERT INTO tenant_api_keys VALUES('key','t1','key','prefix','hash','[\"retrieve\"]',NULL,NULL,'u',NULL,'now')")
-        conn.execute("INSERT INTO sessions VALUES('session','u','session-hash','2999-01-01T00:00:00+00:00',NULL,'now')")
-    applied = legacy.migrate()
-    assert applied == [2, 3]
-    assert [kb["name"] for kb in legacy.knowledge_bases()] == ["Shared - t1 (t1)", "Shared - t2 (t2)"]
-    assert legacy.one("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tenants'") is None
-    assert legacy.one("SELECT revoked_at FROM api_keys WHERE id='key'")["revoked_at"]
-    assert legacy.one("SELECT revoked_at FROM sessions WHERE id='session'")["revoked_at"]
-    assert legacy.one("PRAGMA foreign_key_check") is None

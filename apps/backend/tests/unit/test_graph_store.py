@@ -6,7 +6,7 @@ from rag.graph_store import GraphStore
 
 def ready_document(tmp_path: Path) -> tuple[Database, dict[str, str], dict[str, str], GraphStore]:
     database = Database(tmp_path / "app.sqlite3")
-    database.migrate()
+    database.initialize()
     database.bootstrap_admin("admin@example.com", "hash")
     user = database.user_by_email("admin@example.com")
     assert user

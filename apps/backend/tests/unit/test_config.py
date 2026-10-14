@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from config import find_repository_env_file
+from core.config import find_repository_env_file
 
 
 def test_find_repository_env_file_returns_none_for_container_layout(tmp_path: Path) -> None:

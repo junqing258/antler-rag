@@ -30,7 +30,7 @@ FastAPI（管理 UI + /api/v1）
 ```text
 apps/backend/src/
 ├── core/            # 配置和应用级基础设施
-├── db/              # SQLite 仓储与数据库迁移
+├── db/              # SQLite 仓储与当前 schema 初始化
 ├── models/          # Pydantic 请求/领域模型
 ├── rag/             # 向量、图谱和 Agentic RAG 实现
 ├── routers/         # 按 API 资源拆分的 FastAPI 路由
@@ -39,7 +39,7 @@ apps/backend/src/
 └── app.py           # 应用装配入口
 ```
 
-为避免破坏已有脚本，`config.py` 和 `documents.py` 保留为向新模块转发的兼容入口；新代码应分别从 `core.config` 和 `utils.documents` 导入。
+配置与文档解析分别从 `core.config` 和 `utils.documents` 导入，请求模型从 `models.schemas` 导入；不提供旧模块转发或旧请求字段别名。聊天接口使用 `message`，检索接口使用 `query`。
 
 ## 快速开始（Docker）
 
@@ -138,7 +138,17 @@ just docker-build
 
 未配置 `RAG_CHAT_MODEL` 时，`/api/v1/chat` 不会生成回答，但仍会返回召回的来源片段，方便 Agent 自行处理上下文。
 
-配置外部 embedding 后，应用会使用一个由服务地址、模型和维数指纹命名的新 Chroma collection，避免新旧向量空间混用。存量文档需要显式重建索引：先备份完整数据目录，随后在维护窗口运行 `cd apps/backend && uv run python -m reindex_embeddings --confirm`。 
+配置外部 embedding 后，应用会使用一个由服务地址、模型和维数指纹命名的新 Chroma collection，避免新旧向量空间混用。存量文档需要在维护窗口显式重建：停止所有写入者、备份完整数据目录并确认数据库符合当前 schema 后，先执行 `reindex_embeddings --dry-run` 检查，再以 `--confirm` 重建整个活动 collection。具体顺序见[备份、恢复与升级](docs/operations/backup-and-upgrade.md)。
+
+## 文档分块策略
+
+创建知识库可选择 `recursive`（默认）或 `structure`，并配置块大小（100～4000 字符，默认 900）及重叠（0～1000 字符，默认 150，必须小于块大小）。长度按字符计算，包含标题上下文。创建后分块配置固定。应用只使用当前数据库结构，启动时直接初始化空库；不运行版本迁移，也不支持旧格式数据库。切换策略请新建知识库并重新上传原文件，验证后再处理旧库。
+
+`structure` 按标题、章节和段落分块：Markdown 支持 ATX/Setext 标题、围栏/缩进代码、列表和常见管道表格；DOCX 读取明确标题样式及 outline level，并保留段落与表格原顺序。TXT 只按段落，PDF 只按真实页号和可提取段落，不识别版面标题、不做 OCR。DOCX 页码、文本框、页眉页脚和复杂自动编号还原不在本期范围。Markdown 解析支持受限块语法，不承诺完整 CommonMark/GFM。
+
+结构切片包含标题前缀，并通过检索与问答来源返回 `heading_path`、`section_id`、`structure_quality` 以及可靠的页码/行号。切片必须包含当前策略、分块器标识和标题路径字段；旧格式索引需从原文件重新入库。`GET /api/v1/knowledge-bases/{knowledge_base_id}/documents/{document_id}/chunks?offset=0&limit=100` 返回实际索引的 `{items, total}`，需要 `documents:read`。切片弹窗分页加载，关键词只搜索当前页。
+
+上传和重建使用相同分块服务。重建会清理旧向量及图谱来源，成功后图状态为 `not_built`，需管理员通过既有图谱重建入口重新生成。源文件或解析预检失败会保留原索引；进入替换后失败会清理部分向量并标记 `failed`，维护操作保留原上传副本以便重试。
 
 ## 使用流程
 
@@ -198,20 +208,14 @@ curl -X POST http://localhost:6050/api/v1/retrieve \
 
 升级或备份前，先进入维护窗口或停止容器，然后完整复制 `/data`。只备份 SQLite、Chroma 或上传文件中的任意一项都无法恢复完整 RAG 状态。恢复时停止服务，整体替换 `/data`，再使用创建该备份的镜像版本启动。
 
-从多租户旧版本升级前，先停止服务并备份完整数据目录，然后在备份副本上预演：
-
-```bash
-cd apps/backend
-uv run python -m migrate_single_workspace --data-dir /data --dry-run
-```
-
-核对报告后，才在维护窗口中以 `--confirm` 执行迁移。该过程会撤销旧会话和 API Key、复制上传文件并重建 Chroma 索引。
+应用不包含旧版本数据库转换、旧工作区迁移命令或旧切片读取逻辑。启动只初始化当前 schema，并校验非空数据库结构。已有目录不符合当前结构时，保留原目录与备份，使用新数据目录启动并重新上传原文件。重建命令仅处理符合当前 schema 的数据库，不负责转换旧库。
 
 更详细的操作说明见：
 
 - [部署说明](docs/operations/deployment.md)
 - [备份、恢复与升级](docs/operations/backup-and-upgrade.md)
 - [Codex 设计 + Claude Code 审核工作流](docs/operations/multi-agent-workflow.md)
+- [结构分块实施方案](docs/plans/structure-chunking-implementation-plan.md)
 
 ## 许可证
 

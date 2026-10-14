@@ -2,7 +2,7 @@
 
 The vector store remains the only enabled retriever for now.  Keeping its adapter
 behind this small service lets keyword and graph retrieval be added later without
-changing the legacy HTTP contracts.
+changing the HTTP contracts.
 """
 
 from __future__ import annotations
@@ -11,11 +11,12 @@ from dataclasses import dataclass
 from time import perf_counter
 from typing import Literal, Protocol
 
+from .chunking import ChunkMetadata
 from .store import RAGStore, RetrievedChunk
 
 
 @dataclass(frozen=True)
-class Evidence:
+class Evidence(ChunkMetadata):
     """A retriever result with a stable ID and enough provenance to cite it."""
 
     evidence_id: str
@@ -47,6 +48,7 @@ class Evidence:
             else RAGStore.similarity_score(chunk.distance),
             distance=chunk.distance,
             rerank_score=chunk.rerank_score,
+            **chunk.structure_payload(),
         )
 
 
@@ -113,7 +115,7 @@ class VectorRetriever:
 
 
 class RetrievalService:
-    """Coordinates enabled retrievers while preserving vector-only semantics."""
+    """Coordinates enabled retrievers while using vector-only semantics."""
 
     def __init__(self, vector_retriever: Retriever):
         self.vector_retriever = vector_retriever

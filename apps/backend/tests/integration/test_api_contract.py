@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app import create_app
-from config import Settings
+from core.config import Settings
 
 
 def login(client: TestClient) -> dict[str, str]:

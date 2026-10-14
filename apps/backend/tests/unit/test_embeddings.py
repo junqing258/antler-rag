@@ -67,7 +67,11 @@ def test_openai_compatible_embedding_function_batches_large_inputs() -> None:
         requests.append(texts)
         return httpx.Response(
             200,
-            json={"data": [{"index": index, "embedding": [float(text)]} for index, text in enumerate(texts)]},
+            json={
+                "data": [
+                    {"index": index, "embedding": [float(text)]} for index, text in enumerate(texts)
+                ]
+            },
         )
 
     function = OpenAICompatibleEmbeddingFunction(
@@ -81,3 +85,81 @@ def test_openai_compatible_embedding_function_batches_large_inputs() -> None:
 
     assert requests == [[str(index) for index in range(10)], ["10"]]
     assert [vector.tolist() for vector in vectors] == [[float(index)] for index in range(11)]
+
+
+def test_index_drafts_writes_current_strategy_metadata_without_changing_content():
+    from rag.chunking import CHUNKER_VERSIONS, ChunkDraft, chunk_recursive
+    from rag.store import RAGStore
+
+    class Collection:
+        def add(self, **payload):
+            self.payload = payload
+
+    store = object.__new__(RAGStore)
+    store.collection = Collection()
+    for strategy, drafts in (
+        ("recursive", chunk_recursive("# Heading\n\nBody", chunk_size=100, chunk_overlap=20)),
+        (
+            "structure",
+            [
+                ChunkDraft(
+                    content="  exact text\n",
+                    heading_path=["Heading"],
+                    section_id="s000001",
+                    structure_quality="headings",
+                )
+            ],
+        ),
+    ):
+        assert store.index_drafts(
+            knowledge_base_id="kb",
+            document_id="doc",
+            filename="a.md",
+            drafts=drafts,
+            digest="sha",
+            chunk_strategy=strategy,
+        ) == len(drafts)
+        assert store.collection.payload["documents"] == [draft.content for draft in drafts]
+        metadata = store.collection.payload["metadatas"][0]
+        assert (
+            metadata["chunk_strategy"] == strategy
+            and metadata["chunker_version"] == CHUNKER_VERSIONS[strategy]
+        )
+        assert json.loads(metadata["heading_path_json"]) == drafts[0].heading_path
+        if strategy == "recursive":
+            assert "section_id" not in metadata and "structure_quality" not in metadata
+
+
+@pytest.mark.parametrize("missing", ["chunk_strategy", "chunker_version", "heading_path_json"])
+def test_stored_chunks_require_current_metadata(missing):
+    from rag.chunking import ChunkMetadata
+
+    metadata = {
+        "chunk_strategy": "recursive",
+        "chunker_version": "recursive-v1",
+        "heading_path_json": "[]",
+    }
+    del metadata[missing]
+    with pytest.raises(KeyError):
+        ChunkMetadata.from_chroma(metadata)
+
+
+def test_stored_chunks_reject_unsupported_chunker_or_malformed_heading_path():
+    from rag.chunking import ChunkMetadata
+
+    with pytest.raises(ValueError, match="current chunker"):
+        ChunkMetadata.from_chroma(
+            {
+                "chunk_strategy": "structure",
+                "chunker_version": "structure-v0",
+                "heading_path_json": "[]",
+            }
+        )
+    with pytest.raises(ValueError, match="heading_path_json"):
+        ChunkMetadata.from_chroma(
+            {
+                "chunk_strategy": "recursive",
+                "chunker_version": "recursive-v1",
+                "heading_path_json": "{}",
+            }
+        )

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-MAX_SCHEMA_VERSION = 3
+from .schema import schema_statements, validate_schema
 
 
 def now() -> str:
@@ -35,182 +35,22 @@ class Database:
         finally:
             conn.close()
 
-    def schema_version(self) -> int:
-        if not self.path.exists():
-            return 0
-        with self.connection() as conn:
-            if not conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
-            ).fetchone():
-                return 0
-            return int(
-                conn.execute("SELECT COALESCE(MAX(version),0) FROM schema_migrations").fetchone()[0]
-            )
-
-    def migrate(self) -> list[int]:
-        applied: list[int] = []
-        version = self.schema_version()
-        if version > MAX_SCHEMA_VERSION:
-            raise RuntimeError(
-                f"Database schema version {version} is newer than this service supports ({MAX_SCHEMA_VERSION})"
-            )
-        if version == 0:
-            initial = Path(__file__).parent / "migrations" / "001_initial.sql"
-            with self.connection() as conn:
-                conn.executescript(initial.read_text())
-                conn.execute(
-                    "INSERT INTO schema_migrations(version,applied_at) VALUES(1,?)", (now(),)
-                )
-            applied.append(1)
-            version = 1
-        if version < 2:
-            self._migrate_v2()
-            applied.append(2)
-            version = 2
-        if version < 3:
-            self._migrate_v3()
-            applied.append(3)
-        return applied
-
-    @staticmethod
-    def _v3_statements() -> tuple[str, ...]:
-        """One statement per execute: executescript would commit this transaction."""
-        return (
-            """CREATE TABLE graph_builds (
-                id TEXT PRIMARY KEY,
-                knowledge_base_id TEXT NOT NULL REFERENCES knowledge_bases(id),
-                requested_by TEXT REFERENCES users(id),
-                status TEXT NOT NULL CHECK(status IN ('queued','running','ready','failed')),
-                extractor_model TEXT NOT NULL, extractor_version TEXT NOT NULL,
-                schema_version INTEGER NOT NULL, requested_at TEXT NOT NULL,
-                started_at TEXT, finished_at TEXT, error_code TEXT
-            )""",
-            """CREATE TABLE graph_document_states (
-                knowledge_base_id TEXT NOT NULL REFERENCES knowledge_bases(id),
-                document_id TEXT NOT NULL REFERENCES documents(id),
-                build_id TEXT REFERENCES graph_builds(id), source_sha256 TEXT NOT NULL,
-                status TEXT NOT NULL CHECK(status IN ('not_built','building','ready','stale','failed')),
-                extractor_model TEXT, extractor_version TEXT, indexed_at TEXT,
-                error_code TEXT, updated_at TEXT NOT NULL,
-                PRIMARY KEY(knowledge_base_id, document_id)
-            )""",
-            """CREATE TABLE entities (
-                id TEXT PRIMARY KEY, knowledge_base_id TEXT NOT NULL REFERENCES knowledge_bases(id),
-                canonical_name TEXT NOT NULL, normalized_name TEXT NOT NULL, entity_type TEXT NOT NULL,
-                created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-                UNIQUE(knowledge_base_id, normalized_name, entity_type), UNIQUE(knowledge_base_id, id)
-            )""",
-            """CREATE TABLE entity_aliases (
-                id TEXT PRIMARY KEY, entity_id TEXT NOT NULL REFERENCES entities(id), normalized_alias TEXT NOT NULL,
-                UNIQUE(entity_id, normalized_alias)
-            )""",
-            """CREATE TABLE relations (
-                id TEXT PRIMARY KEY, knowledge_base_id TEXT NOT NULL REFERENCES knowledge_bases(id),
-                subject_entity_id TEXT NOT NULL, predicate TEXT NOT NULL, object_entity_id TEXT NOT NULL,
-                confidence REAL NOT NULL CHECK(confidence >= 0 AND confidence <= 1),
-                extractor_model TEXT NOT NULL, extractor_version TEXT NOT NULL,
-                created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-                UNIQUE(knowledge_base_id, subject_entity_id, predicate, object_entity_id),
-                UNIQUE(knowledge_base_id, id),
-                FOREIGN KEY(knowledge_base_id, subject_entity_id) REFERENCES entities(knowledge_base_id, id),
-                FOREIGN KEY(knowledge_base_id, object_entity_id) REFERENCES entities(knowledge_base_id, id)
-            )""",
-            """CREATE TABLE entity_mentions (
-                id TEXT PRIMARY KEY, entity_id TEXT NOT NULL, knowledge_base_id TEXT NOT NULL,
-                document_id TEXT NOT NULL REFERENCES documents(id), chunk_id TEXT NOT NULL,
-                start_offset INTEGER NOT NULL, end_offset INTEGER NOT NULL,
-                UNIQUE(entity_id, chunk_id, start_offset, end_offset),
-                FOREIGN KEY(knowledge_base_id, entity_id) REFERENCES entities(knowledge_base_id, id)
-            )""",
-            """CREATE TABLE relation_mentions (
-                id TEXT PRIMARY KEY, relation_id TEXT NOT NULL, knowledge_base_id TEXT NOT NULL,
-                document_id TEXT NOT NULL REFERENCES documents(id), chunk_id TEXT NOT NULL,
-                build_id TEXT NOT NULL REFERENCES graph_builds(id),
-                UNIQUE(relation_id, chunk_id, build_id),
-                FOREIGN KEY(knowledge_base_id, relation_id) REFERENCES relations(knowledge_base_id, id)
-            )""",
-            "CREATE INDEX graph_builds_kb_idx ON graph_builds(knowledge_base_id, status, requested_at DESC)",
-            "CREATE INDEX graph_document_states_kb_idx ON graph_document_states(knowledge_base_id, status, updated_at DESC)",
-            "CREATE INDEX entities_kb_name_idx ON entities(knowledge_base_id, normalized_name, entity_type)",
-            "CREATE INDEX relations_kb_subject_idx ON relations(knowledge_base_id, subject_entity_id, predicate)",
-            "CREATE INDEX relations_kb_object_idx ON relations(knowledge_base_id, object_entity_id, predicate)",
-            "CREATE INDEX entity_mentions_kb_document_idx ON entity_mentions(knowledge_base_id, document_id, chunk_id)",
-            "CREATE INDEX relation_mentions_kb_document_idx ON relation_mentions(knowledge_base_id, document_id, chunk_id)",
-        )
-
-    def _migrate_v3(self) -> None:
+    def initialize(self) -> None:
+        """Create the current schema only in an empty database, otherwise validate it."""
         with self.connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
-                for statement in self._v3_statements():
-                    conn.execute(statement)
-                violations = conn.execute("PRAGMA foreign_key_check").fetchall()
-                if violations:
-                    raise RuntimeError(f"foreign key check failed: {violations!r}")
-                conn.execute(
-                    "INSERT INTO schema_migrations(version,applied_at) VALUES(3,?)", (now(),)
-                )
+                existing = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' LIMIT 1"
+                ).fetchone()
+                if not existing:
+                    for statement in schema_statements():
+                        conn.execute(statement)
+                validate_schema(conn)
                 conn.commit()
             except Exception:
                 conn.rollback()
                 raise
-
-    def _migrate_v2(self) -> None:
-        """Convert the historical tenant schema. FK mode must change before BEGIN."""
-        with self.connection() as conn:
-            conn.execute("PRAGMA foreign_keys = OFF")
-            try:
-                conn.execute("BEGIN IMMEDIATE")
-                stamp = now()
-                conn.executescript(
-                    """
-                    CREATE TABLE users_v2 (id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE COLLATE NOCASE,password_hash TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('active','disabled')),role TEXT CHECK(role IS NULL OR role IN ('admin','editor','viewer')),must_change_password INTEGER NOT NULL DEFAULT 0,temporary_password_expires_at TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
-                    CREATE TABLE api_keys_v2 (id TEXT PRIMARY KEY,name TEXT NOT NULL,key_prefix TEXT NOT NULL,key_hash TEXT NOT NULL UNIQUE,scopes_json TEXT NOT NULL,expires_at TEXT,revoked_at TEXT,created_by TEXT NOT NULL REFERENCES users_v2(id),last_used_at TEXT,created_at TEXT NOT NULL);
-                    CREATE TABLE knowledge_bases_v2 (id TEXT PRIMARY KEY,name TEXT NOT NULL UNIQUE COLLATE NOCASE,description TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','deleting','deleted','delete_failed')),chunk_size INTEGER NOT NULL,chunk_overlap INTEGER NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
-                    CREATE TABLE documents_v2 (id TEXT PRIMARY KEY,knowledge_base_id TEXT NOT NULL REFERENCES knowledge_bases_v2(id),filename TEXT NOT NULL,stored_filename TEXT NOT NULL,sha256 TEXT NOT NULL,size_bytes INTEGER NOT NULL,chunk_count INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL CHECK(status IN ('pending','indexing','ready','failed','deleting','deleted','delete_failed')),error_message TEXT,created_by TEXT NOT NULL REFERENCES users_v2(id),created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(knowledge_base_id,sha256));
-                    CREATE INDEX documents_kb_idx ON documents_v2(knowledge_base_id,created_at DESC);
-                    CREATE TABLE audit_events_v2 (id TEXT PRIMARY KEY,actor_type TEXT NOT NULL,actor_id TEXT,action TEXT NOT NULL,resource_type TEXT NOT NULL,resource_id TEXT,request_id TEXT NOT NULL,created_at TEXT NOT NULL,detail_json TEXT NOT NULL DEFAULT '{}');
-                    """
-                )
-                conn.execute(
-                    """INSERT INTO users_v2 SELECT u.id,u.email,u.password_hash,u.status,
-                    CASE WHEN u.is_platform_admin=1 OR EXISTS(SELECT 1 FROM memberships m WHERE m.user_id=u.id AND m.status='active' AND m.role='tenant_admin') THEN 'admin'
-                    WHEN EXISTS(SELECT 1 FROM memberships m WHERE m.user_id=u.id AND m.status='active' AND m.role='editor') THEN 'editor'
-                    WHEN EXISTS(SELECT 1 FROM memberships m WHERE m.user_id=u.id AND m.status='active' AND m.role='viewer') THEN 'viewer' ELSE NULL END,
-                    u.must_change_password,u.temporary_password_expires_at,u.created_at,u.updated_at FROM users u"""
-                )
-                conn.execute(
-                    """INSERT INTO knowledge_bases_v2 SELECT k.id,
-                    CASE WHEN (SELECT count(*) FROM knowledge_bases same WHERE same.name=k.name)>1 THEN k.name || ' - ' || t.name || ' (' || substr(k.tenant_id,1,8) || ')' ELSE k.name END,
-                    k.description,k.status,k.chunk_size,k.chunk_overlap,k.created_at,k.updated_at FROM knowledge_bases k JOIN tenants t ON t.id=k.tenant_id"""
-                )
-                conn.execute(
-                    "INSERT INTO documents_v2 SELECT id,knowledge_base_id,filename,stored_filename,sha256,size_bytes,chunk_count,status,error_message,created_by,created_at,updated_at FROM documents"
-                )
-                conn.execute(
-                    "INSERT INTO api_keys_v2 SELECT id,name,key_prefix,key_hash,scopes_json,expires_at,COALESCE(revoked_at,?),created_by,last_used_at,created_at FROM tenant_api_keys",
-                    (stamp,),
-                )
-                conn.execute(
-                    "INSERT INTO audit_events_v2 SELECT id,actor_type,actor_id,action,resource_type,resource_id,request_id,created_at,detail_json FROM audit_events"
-                )
-                conn.execute("UPDATE sessions SET revoked_at=COALESCE(revoked_at,?)", (stamp,))
-                conn.executescript(
-                    """DROP TABLE documents; DROP TABLE tenant_api_keys; DROP TABLE memberships; DROP TABLE knowledge_bases; DROP TABLE audit_events; DROP TABLE tenants; DROP TABLE users;
-                    ALTER TABLE users_v2 RENAME TO users; ALTER TABLE api_keys_v2 RENAME TO api_keys; ALTER TABLE knowledge_bases_v2 RENAME TO knowledge_bases; ALTER TABLE documents_v2 RENAME TO documents; ALTER TABLE audit_events_v2 RENAME TO audit_events;"""
-                )
-                conn.execute(
-                    "INSERT INTO schema_migrations(version,applied_at) VALUES(2,?)", (stamp,)
-                )
-                conn.commit()
-                violations = conn.execute("PRAGMA foreign_key_check").fetchall()
-                if violations:
-                    raise RuntimeError(f"foreign key check failed: {violations!r}")
-            except Exception:
-                conn.rollback()
-                raise
-            finally:
-                conn.execute("PRAGMA foreign_keys = ON")
 
     def one(self, sql: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | None:
         with self.connection() as conn:
@@ -415,12 +255,17 @@ class Database:
         )
 
     def create_knowledge_base(
-        self, name: str, description: str, chunk_size: int, chunk_overlap: int
+        self,
+        name: str,
+        description: str,
+        chunk_size: int,
+        chunk_overlap: int,
+        chunk_strategy: str = "recursive",
     ) -> dict[str, Any]:
         kb_id, stamp = str(uuid4()), now()
         self.run(
-            "INSERT INTO knowledge_bases(id,name,description,status,chunk_size,chunk_overlap,created_at,updated_at) VALUES(?,?,?,'active',?,?,?,?)",
-            (kb_id, name, description, chunk_size, chunk_overlap, stamp, stamp),
+            "INSERT INTO knowledge_bases(id,name,description,status,chunk_size,chunk_overlap,chunk_strategy,created_at,updated_at) VALUES(?,?,?,'active',?,?,?,?,?)",
+            (kb_id, name, description, chunk_size, chunk_overlap, chunk_strategy, stamp, stamp),
         )
         return self.knowledge_base(kb_id) or {}
 
@@ -509,6 +354,37 @@ class Database:
         self.run(
             "UPDATE documents SET status=?,chunk_count=COALESCE(?,chunk_count),error_message=?,updated_at=? WHERE knowledge_base_id=? AND id=?",
             (status, chunk_count, error, now(), kb_id, doc_id),
+        )
+
+    def set_document_ready_in_tx(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        knowledge_base_id: str,
+        document_id: str,
+        chunk_count: int,
+        expected_sha256: str,
+    ) -> None:
+        updated = conn.execute(
+            """UPDATE documents SET status='ready',chunk_count=?,error_message=NULL,updated_at=?
+               WHERE knowledge_base_id=? AND id=? AND status='indexing' AND sha256=?""",
+            (chunk_count, now(), knowledge_base_id, document_id, expected_sha256),
+        ).rowcount
+        if updated != 1:
+            raise ValueError("Document state or SHA256 changed while indexing")
+
+    def restore_document_source(self, kb_id: str, doc_id: str, snapshot: dict[str, Any]) -> None:
+        self.run(
+            """UPDATE documents SET stored_filename=?,filename=?,size_bytes=?,updated_at=?
+               WHERE knowledge_base_id=? AND id=?""",
+            (
+                snapshot["stored_filename"],
+                snapshot["filename"],
+                snapshot["size_bytes"],
+                now(),
+                kb_id,
+                doc_id,
+            ),
         )
 
     def delete_document_record(self, kb_id: str, doc_id: str) -> None:

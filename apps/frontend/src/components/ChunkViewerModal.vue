@@ -1,20 +1,31 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import { CopyDocument, Document, Search, Files } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
+import ChunkProvenance from "./ChunkProvenance.vue";
 
 const props = defineProps<{
   visible: boolean;
   document: any;
   chunks?: any[];
   loading?: boolean;
+  total: number;
+  page: number;
+  pageSize: number;
 }>();
 
 const emit = defineEmits<{
   (e: "update:visible", value: boolean): void;
+  (e: "page-change", value: number): void;
 }>();
 
 const filterText = ref("");
+watch(
+  () => [props.page, props.document?.id, props.visible],
+  () => {
+    filterText.value = "";
+  },
+);
 
 function handleClose() {
   emit("update:visible", false);
@@ -51,11 +62,13 @@ function copyChunkText(content: string) {
       <div class="meta-strip">
         <div class="meta-item">
           <span>切块总数</span>
-          <strong>{{ document?.chunk_count ?? chunks?.length ?? 0 }} Chunks</strong>
+          <strong>{{ total }} Chunks</strong>
         </div>
         <div class="meta-item">
           <span>文档状态</span>
-          <span class="status" :class="document?.status">{{ document?.status }}</span>
+          <span class="status" :class="document?.status">{{
+            document?.status
+          }}</span>
         </div>
       </div>
 
@@ -63,21 +76,25 @@ function copyChunkText(content: string) {
         <div class="search-bar">
           <el-input
             v-model="filterText"
-            placeholder="搜索切块内容关键词..."
+            placeholder="搜索当前页切片关键词...（仅当前页）"
             clearable
           >
-            <template #prefix><el-icon><Search /></el-icon></template>
+            <template #prefix
+              ><el-icon><Search /></el-icon
+            ></template>
           </el-input>
         </div>
 
         <div class="chunks-list">
           <div
-            v-for="(chunk, idx) in chunks.filter((c) => !filterText || c.content.includes(filterText))"
-            :key="chunk.id || idx"
+            v-for="(chunk, idx) in chunks.filter(
+              (c) => !filterText || c.content.includes(filterText),
+            )"
+            :key="chunk.chunk_id || idx"
             class="chunk-card"
           >
             <div class="chunk-card-head">
-              <span class="chunk-badge">Chunk #{{ idx + 1 }}</span>
+              <span class="chunk-badge">Chunk #{{ chunk.chunk_index }}</span>
               <el-button
                 link
                 type="primary"
@@ -87,6 +104,7 @@ function copyChunkText(content: string) {
                 <el-icon class="mr-1"><CopyDocument /></el-icon> 复制内容
               </el-button>
             </div>
+            <ChunkProvenance :chunk="chunk" />
             <pre class="chunk-text">{{ chunk.content }}</pre>
           </div>
         </div>
@@ -95,6 +113,14 @@ function copyChunkText(content: string) {
         <el-icon class="empty-icon"><Document /></el-icon>
         <p>暂无切块数据或文档正在解析处理中</p>
       </div>
+      <el-pagination
+        :current-page="page"
+        :page-size="pageSize"
+        :total="total"
+        layout="prev, pager, next, total"
+        :disabled="loading"
+        @current-change="emit('page-change', $event)"
+      />
     </div>
   </el-dialog>
 </template>

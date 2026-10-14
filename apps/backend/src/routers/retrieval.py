@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Request
 
 from core.config import Settings
 from db import Database
-from models.schemas import ChatRequest, Principal, RetrieveRequest
+from models.schemas import ChatRequest, Principal, RetrievalOptions, RetrieveRequest
 from rag import RetrievalService
 from rag.store import RerankerError
 from routers.dependencies import access, get_database, get_retrieval, get_settings
@@ -19,7 +19,7 @@ logger = configure_logging()
 router = APIRouter(prefix="/api/v1", tags=["retrieval"])
 
 
-def validate_retrieve(payload: RetrieveRequest, database: Database) -> None:
+def validate_retrieve(payload: RetrievalOptions, database: Database) -> None:
     if not database.knowledge_base(payload.knowledge_base_id, True):
         raise APIError("not_found", "Knowledge base was not found", 404)
     for document_id in payload.document_ids or []:
@@ -62,7 +62,7 @@ async def chat(
     try:
         chunks = service.retrieve(
             knowledge_base_id=payload.knowledge_base_id,
-            query=payload.query,
+            query=payload.message,
             top_k=payload.top_k,
             document_ids=payload.document_ids,
             score_threshold=payload.score_threshold,
@@ -84,7 +84,7 @@ async def chat(
     answer = await generate_answer(
         settings=settings,
         prompt=prompt,
-        question=payload.query,
+        question=payload.message,
         chunks=chunks,
         request_id=request.state.request_id,
         logger=logger,

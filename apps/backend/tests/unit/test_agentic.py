@@ -1,6 +1,6 @@
 import asyncio
 
-from config import Settings
+from core.config import Settings
 from rag.agentic import AgentService
 from rag.retrieval import Evidence
 

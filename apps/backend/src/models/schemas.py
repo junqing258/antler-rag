@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import AliasChoices, BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class LoginRequest(BaseModel):
@@ -33,10 +33,17 @@ class ApiKeyCreate(BaseModel):
 
 
 class KnowledgeBaseCreate(BaseModel):
+    chunk_strategy: Literal["recursive", "structure"] = "recursive"
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=1000)
     chunk_size: int = Field(default=900, ge=100, le=4000)
     chunk_overlap: int = Field(default=150, ge=0, le=1000)
+
+    @model_validator(mode="after")
+    def validate_overlap(self) -> KnowledgeBaseCreate:
+        if self.chunk_overlap >= self.chunk_size:
+            raise ValueError("chunk_overlap must be smaller than chunk_size")
+        return self
 
 
 class KnowledgeBasePatch(BaseModel):
@@ -44,23 +51,20 @@ class KnowledgeBasePatch(BaseModel):
     description: str | None = Field(default=None, max_length=1000)
 
 
-class RetrieveRequest(BaseModel):
+class RetrievalOptions(BaseModel):
     knowledge_base_id: str
-    query: str = Field(min_length=1, max_length=10_000)
     top_k: int = Field(default=5, ge=1, le=20)
     document_ids: list[str] | None = Field(default=None, max_length=100)
     score_threshold: float | None = Field(default=None, ge=0, le=1)
     rerank: bool = False
 
 
-class ChatRequest(RetrieveRequest):
-    """A chat request accepts both the new `message` and legacy `query` fields."""
+class RetrieveRequest(RetrievalOptions):
+    query: str = Field(min_length=1, max_length=10_000)
 
-    query: str = Field(
-        min_length=1,
-        max_length=10_000,
-        validation_alias=AliasChoices("message", "query"),
-    )
+
+class ChatRequest(RetrievalOptions):
+    message: str = Field(min_length=1, max_length=10_000)
     system_prompt: str | None = Field(default=None, max_length=5000)
 
 

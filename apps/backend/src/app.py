@@ -1,7 +1,7 @@
-"""Application composition root.
+"""应用组装入口。
 
-HTTP endpoints live in :mod:`routers`; this module owns only process lifecycle,
-cross-cutting middleware, and static-file mounting.
+HTTP 接口定义在 :mod:`routers` 模块中；本模块仅负责应用生命周期、
+通用中间件和静态文件挂载。
 """
 
 from __future__ import annotations

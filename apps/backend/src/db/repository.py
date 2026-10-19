@@ -120,6 +120,23 @@ class Database:
     def user(self, user_id: str) -> dict[str, Any] | None:
         return self.one("SELECT * FROM users WHERE id=?", (user_id,))
 
+    def supabase_user(self, user_id: str, email: str, admin_email: str | None) -> dict[str, Any]:
+        # Never link legacy accounts by email; identity comes from Supabase only.
+        stamp = now()
+        self.run(
+            "INSERT INTO users(id,email,password_hash,status,role,created_at,updated_at) "
+            "VALUES(?,?,?,'active',?,?,?) ON CONFLICT(id) DO NOTHING",
+            (
+                user_id,
+                email.lower(),
+                "!supabase",
+                "admin" if admin_email and email.lower() == admin_email.lower() else "viewer",
+                stamp,
+                stamp,
+            ),
+        )
+        return self.user(user_id) or {}
+
     def users(self) -> list[dict[str, Any]]:
         return self.many(
             "SELECT id,email,status,role,must_change_password,created_at FROM users ORDER BY email"

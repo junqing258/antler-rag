@@ -55,7 +55,8 @@ Docker Compose 是推荐的生产启动方式。
 
    ```dotenv
    RAG_BOOTSTRAP_ADMIN_EMAIL=admin@example.com
-   RAG_BOOTSTRAP_ADMIN_PASSWORD=replace-with-a-long-unique-password
+   RAG_SUPABASE_URL=https://your-project.supabase.co
+   RAG_SUPABASE_PUBLISHABLE_KEY=sb_publishable_replace_me
    ```
 
 3. 构建并启动：
@@ -64,9 +65,11 @@ Docker Compose 是推荐的生产启动方式。
    docker compose up --build
    ```
 
-4. 打开 `http://localhost:6050`，使用 bootstrap 账号登录，并由管理员创建首个知识库。
+4. 打开 `http://localhost:6050`，使用 Antler 邮箱密码登录（或在登录页注册并验证邮箱），并由管理员创建首个知识库。
 
-首次成功登录后，请从 `.env` 移除 `RAG_BOOTSTRAP_ADMIN_PASSWORD`（以及不再需要时的邮箱）。引导账户只会创建一次，但不应长期保留该明文密码。
+Supabase URL 和 publishable key 必须与 `/Users/zhangjunqing/git-hy/antler` 使用的 `ANTLER_SUPABASE_URL`、`ANTLER_SUPABASE_PUBLISHABLE_KEY` 一致。注册使用邮件验证码，沿用 Antler 的 Supabase 邮件模板（`{{ .Token }}`）。会话由 Supabase 自动刷新；退出仅退出当前 RAG 设备。后端通过 Supabase Auth `/auth/v1/user` 验证访问令牌。无需 service role key。
+
+`RAG_BOOTSTRAP_ADMIN_EMAIL` 对应的已验证账号首次登录时获得管理员权限，其他账号默认为 viewer；管理员可在成员页调整角色或禁用账号。账号密码由 Supabase 统一管理。本次不迁移旧账号、密码或会话；请使用新的数据目录部署，旧数据不会自动删除。
 
 服务就绪检查：
 
@@ -117,11 +120,11 @@ just docker-build
 
 | 变量 | 默认值 | 用途 |
 | --- | --- | --- |
-| `RAG_BOOTSTRAP_ADMIN_EMAIL` | 无 | 首次初始化的管理员邮箱；必须与密码一同设置。 |
-| `RAG_BOOTSTRAP_ADMIN_PASSWORD` | 无 | 首次初始化的管理员密码。 |
+| `RAG_BOOTSTRAP_ADMIN_EMAIL` | 无 | 首次登录授予管理员角色的 Supabase 邮箱。 |
+| `RAG_SUPABASE_URL` | 无 | 与 Antler 一致的 Supabase 项目 URL。 |
+| `RAG_SUPABASE_PUBLISHABLE_KEY` | 无 | 与 Antler 一致的公开 publishable / anon key。 |
 | `RAG_DATA_DIR` | `data` | SQLite、Chroma 与上传文件的根目录。生产容器中为 `/data`。 |
 | `RAG_ENVIRONMENT` | `development` | 运行环境标识。 |
-| `RAG_SESSION_HOURS` | `12` | 管理端会话有效期（1–168 小时）。 |
 | `RAG_MAX_UPLOAD_BYTES` | `26214400` | 单个上传文件的最大字节数，默认 25 MiB。 |
 | `RAG_LLM_BASE_URL` | 无 | 兼容 OpenAI 的服务地址；聊天与 embedding 共用。 |
 | `RAG_LLM_API_KEY` | 无 | 上游服务的 API Key，仅在服务端使用。 |
@@ -152,7 +155,7 @@ just docker-build
 
 ## 使用流程
 
-1. 管理员登录后添加用户，并在“API Key”页面创建密钥。密钥明文只在创建时显示一次。
+1. 成员使用 Antler 账号首次登录后自动加入，管理员可调整其权限，并在“API Key”页面创建密钥。密钥明文只在创建时显示一次。
 2. 管理员或编辑者创建知识库并上传文档。
 4. 在“检索调试”中验证召回结果，或通过数据 API 接入 Agent。
 
@@ -180,7 +183,7 @@ API Key 可授予的 scope 为 `kb:read`、`retrieve`、`chat`、`agentic:query`
 | 分类 | 端点 |
 | --- | --- |
 | 健康检查 | `GET /health/live`、`GET /health/ready` |
-| 认证 | `POST /api/v1/auth/login`、`POST /api/v1/auth/logout`、`POST /api/v1/auth/change-password` |
+| 认证 | `GET /api/v1/auth/config`、`GET /api/v1/auth/me`；登录注册、验证码及退出由 Supabase SDK 处理 |
 | 用户 | `/api/v1/users` |
 | 知识库与文档 | `/api/v1/knowledge-bases`、`/api/v1/knowledge-bases/{knowledge_base_id}/documents` |
 | 检索与问答 | `POST /api/v1/retrieve`、`POST /api/v1/chat`、`POST /api/v1/agentic-rag`（显式开启后） |

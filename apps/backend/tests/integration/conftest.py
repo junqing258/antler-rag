@@ -45,3 +45,25 @@ def isolated_embedding_store(monkeypatch):
         )
 
     monkeypatch.setattr(app, "RAGStore", local_store)
+
+
+@pytest.fixture(autouse=True)
+def supabase_identity(monkeypatch):
+    monkeypatch.setenv("RAG_SUPABASE_URL", "https://auth.test")
+    monkeypatch.setenv("RAG_SUPABASE_PUBLISHABLE_KEY", "public-test-key")
+
+    def verify(url, **kwargs):
+        assert url == "https://auth.test/auth/v1/user"
+        token = kwargs["headers"]["Authorization"]
+        identity = {
+            "id": "supabase-admin",
+            "email": "admin@example.com",
+            "email_confirmed_at": "2026-01-01",
+        }
+        return httpx.Response(
+            200 if token == "Bearer test-admin" else 401,
+            json=identity,
+            request=httpx.Request("GET", url),
+        )
+
+    monkeypatch.setattr("routers.dependencies.httpx.get", verify)

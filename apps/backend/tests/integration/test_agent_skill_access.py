@@ -14,14 +14,15 @@ def test_kb_read_scope_allows_api_key_listing_without_changing_session_access(
     settings = Settings(
         data_dir=tmp_path,
         bootstrap_admin_email="admin@example.com",
-        bootstrap_admin_password="a-long-bootstrap-password",
     )
     with TestClient(create_app(settings)) as client:
-        login = client.post(
-            "/api/v1/auth/login",
-            json={"email": "admin@example.com", "password": "a-long-bootstrap-password"},
+        assert (
+            client.get(
+                "/api/v1/auth/me", headers={"Authorization": "Bearer test-admin"}
+            ).status_code
+            == 200
         )
-        session = {"Authorization": f"Bearer {login.json()['token']}"}
+        session = {"Authorization": "Bearer test-admin"}
         created = client.post(
             "/api/v1/knowledge-bases", json={"name": "Agent sources"}, headers=session
         ).json()
@@ -47,15 +48,16 @@ def test_agent_skill_download_contains_installable_files_and_requires_admin(tmp_
     settings = Settings(
         data_dir=tmp_path,
         bootstrap_admin_email="admin@example.com",
-        bootstrap_admin_password="a-long-bootstrap-password",
     )
     with TestClient(create_app(settings)) as client:
         denied = client.get("/api/v1/agent-skill/download")
-        login = client.post(
-            "/api/v1/auth/login",
-            json={"email": "admin@example.com", "password": "a-long-bootstrap-password"},
+        assert (
+            client.get(
+                "/api/v1/auth/me", headers={"Authorization": "Bearer test-admin"}
+            ).status_code
+            == 200
         )
-        session = {"Authorization": f"Bearer {login.json()['token']}"}
+        session = {"Authorization": "Bearer test-admin"}
         downloaded = client.get("/api/v1/agent-skill/download", headers=session)
 
     assert denied.status_code == 401

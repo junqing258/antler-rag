@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from typing import Annotated
 
+import httpx
 from fastapi import Depends, Header, Request
 
 from core.config import Settings
@@ -47,20 +49,54 @@ def get_graph_build(request: Request) -> GraphBuildService:
 def session_principal(
     authorization: Annotated[str | None, Header()] = None,
     database: Database = Depends(get_database),
+    settings: Settings = Depends(get_settings),
 ) -> Principal:
     if not authorization or not authorization.startswith("Bearer "):
         raise APIError("authentication_required", "Authentication is required", 401)
-    user = database.session_user(token_digest(authorization.removeprefix("Bearer ").strip()))
-    if not user:
-        raise APIError("invalid_session", "Session is invalid or expired", 401)
+    user = verified_user(authorization.removeprefix("Bearer ").strip(), database, settings)
     return Principal(
         actor_type="user",
         actor_id=user["id"],
         user_id=user["id"],
         role=user["role"],
-        must_change_password=bool(user["must_change_password"]),
-        session_id=user["session_id"],
     )
+
+
+def verified_user(token: str, database: Database, settings: Settings) -> dict:
+    if not settings.supabase_url or not settings.supabase_publishable_key:
+        raise APIError("auth_unavailable", "Supabase authentication is not configured", 503)
+    try:
+        response = httpx.get(
+            f"{settings.supabase_url.rstrip('/')}/auth/v1/user",
+            headers={
+                "apikey": settings.supabase_publishable_key,
+                "Authorization": f"Bearer {token}",
+            },
+            timeout=10,
+        )
+        if response.status_code in (401, 403):
+            raise APIError("invalid_session", "Session is invalid or expired", 401)
+        response.raise_for_status()
+        identity = response.json()
+    except (httpx.HTTPError, ValueError) as error:
+        raise APIError("auth_unavailable", "Authentication service is unavailable", 503) from error
+    if (
+        not identity.get("id")
+        or not identity.get("email")
+        or not identity.get("email_confirmed_at")
+    ):
+        raise APIError("invalid_session", "A verified email account is required", 401)
+    try:
+        user = database.supabase_user(
+            identity["id"], identity["email"], settings.bootstrap_admin_email
+        )
+    except sqlite3.IntegrityError as error:
+        raise APIError(
+            "account_conflict", "Legacy account data must be removed before using this email", 409
+        ) from error
+    if user["status"] != "active":
+        raise APIError("account_disabled", "This account is disabled", 403)
+    return user
 
 
 def normal_session(principal: Principal = Depends(session_principal)) -> Principal:
@@ -80,6 +116,7 @@ def access(required_scope: str | None = None, roles: set[str] | None = None):
         x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
         authorization: Annotated[str | None, Header()] = None,
         database: Database = Depends(get_database),
+        settings: Settings = Depends(get_settings),
     ) -> Principal:
         if x_api_key:
             if not required_scope:
@@ -98,7 +135,7 @@ def access(required_scope: str | None = None, roles: set[str] | None = None):
             )
         if not authorization or not authorization.startswith("Bearer "):
             raise APIError("authentication_required", "Authentication is required", 401)
-        user = database.session_user(token_digest(authorization.removeprefix("Bearer ").strip()))
+        user = verified_user(authorization.removeprefix("Bearer ").strip(), database, settings)
         if not user:
             raise APIError("invalid_session", "Session is invalid or expired", 401)
         if user["must_change_password"]:
@@ -116,7 +153,6 @@ def access(required_scope: str | None = None, roles: set[str] | None = None):
             actor_id=user["id"],
             user_id=user["id"],
             role=user["role"],
-            session_id=user["session_id"],
         )
 
     return dependency

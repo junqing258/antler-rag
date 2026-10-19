@@ -9,12 +9,11 @@ from zipfile import ZIP_DEFLATED, ZipFile
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response
 
-from core.config import Settings
 from db import Database
-from models.schemas import ApiKeyCreate, Principal, UserCreate, UserPatch
-from routers.dependencies import administrator, audit, get_database, get_settings
+from models.schemas import ApiKeyCreate, Principal, UserPatch
+from routers.dependencies import administrator, audit, get_database
 from services.errors import APIError
-from utils.security import SCOPES, expiry, password_hash, public_key, public_user, token_digest
+from utils.security import SCOPES, expiry, public_key, public_user, token_digest
 
 router = APIRouter(prefix="/api/v1", tags=["administration"])
 
@@ -46,27 +45,6 @@ def list_users(
     _: Principal = Depends(administrator), database: Database = Depends(get_database)
 ) -> dict[str, Any]:
     return {"items": database.users()}
-
-
-@router.post("/users", status_code=201)
-def create_user(
-    payload: UserCreate,
-    request: Request,
-    principal: Principal = Depends(administrator),
-    database: Database = Depends(get_database),
-    settings: Settings = Depends(get_settings),
-) -> dict[str, Any]:
-    try:
-        user = database.create_user(
-            payload.email,
-            password_hash.hash(payload.initial_password),
-            payload.role,
-            expiry(settings.temporary_password_hours),
-        )
-    except Exception as error:
-        raise APIError("conflict", "A user with this email already exists", 409) from error
-    audit(request, principal, "create", "user", user["id"])
-    return public_user(user)
 
 
 @router.patch("/users/{user_id}")

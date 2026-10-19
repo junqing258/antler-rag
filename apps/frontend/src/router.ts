@@ -6,7 +6,7 @@ import KnowledgeBasesPage from "./routes/KnowledgeBasesPage.vue";
 import RetrievalPage from "./routes/RetrievalPage.vue";
 import MembersPage from "./routes/MembersPage.vue";
 import ApiKeysPage from "./routes/ApiKeysPage.vue";
-import { authState } from "./composables/useAuth";
+import { authState, loadProfile } from "./composables/useAuth";
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -25,8 +25,14 @@ const router = createRouter({
     },
   ],
 });
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
+  if (to.path !== "/login") {
+    try {
+      await loadProfile();
+    } catch {
+      return "/login";
+    }
+  }
   if (to.path !== "/login" && !authState.token) return "/login";
-  if (to.path === "/login" && authState.token) return "/";
 });
 export default router;

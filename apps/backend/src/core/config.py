@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import hashlib
+import json
 from pathlib import Path
 
 from pydantic import Field, model_validator
@@ -36,11 +38,10 @@ class Settings(BaseSettings):
     chunk_overlap: int = Field(default=150, ge=0, le=1000)
     max_upload_bytes: int = Field(default=25 * 1024 * 1024, ge=1)
     max_files_per_request: int = Field(default=10, ge=1, le=100)
-    session_hours: int = Field(default=12, ge=1, le=168)
-    temporary_password_hours: int = Field(default=24, ge=1, le=168)
+    supabase_url: str = ""
+    supabase_publishable_key: str = ""
     api_key_days: int = Field(default=90, ge=1, le=3650)
     bootstrap_admin_email: str | None = None
-    bootstrap_admin_password: str | None = None
     llm_base_url: str | None = None
     llm_api_key: str | None = None
     chat_model: str | None = None
@@ -63,10 +64,19 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_bootstrap(self) -> Settings:
-        if bool(self.bootstrap_admin_email) != bool(self.bootstrap_admin_password):
-            raise ValueError(
-                "Set both RAG_BOOTSTRAP_ADMIN_EMAIL and RAG_BOOTSTRAP_ADMIN_PASSWORD together"
-            )
+        if bool(self.supabase_url) != bool(self.supabase_publishable_key):
+            raise ValueError("Set both RAG_SUPABASE_URL and RAG_SUPABASE_PUBLISHABLE_KEY")
+        key = self.supabase_publishable_key
+        if key.startswith("sb_secret_"):
+            raise ValueError("Use a Supabase publishable key, never a secret key")
+        if key.count(".") == 2:
+            try:
+                part = key.split(".")[1]
+                claims = json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))
+            except (ValueError, TypeError) as error:
+                raise ValueError("Invalid Supabase public key") from error
+            if claims.get("role") != "anon":
+                raise ValueError("Only a public anon JWT may be exposed to the frontend")
         return self
 
     @property

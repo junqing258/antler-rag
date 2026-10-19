@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted } from "vue";
 import {
   Collection,
   DocumentAdd,
@@ -11,12 +11,9 @@ import {
   ArrowRight,
   Operation,
 } from "@element-plus/icons-vue";
-import { authState } from "../composables/useAuth";
 import { api } from "../lib/request";
 import StatCard from "../components/StatCard.vue";
 import ApiCodeSnippetModal from "../components/ApiCodeSnippetModal.vue";
-
-const mustChange = computed(() => authState.user?.must_change_password);
 
 const stats = ref({
   kbCount: 0,
@@ -37,7 +34,9 @@ onMounted(async () => {
     let totalDocs = 0;
     for (const kb of kbs) {
       try {
-        const docsRes = await api<any>(`/api/v1/knowledge-bases/${kb.id}/documents`);
+        const docsRes = await api<any>(
+          `/api/v1/knowledge-bases/${kb.id}/documents`,
+        );
         const docs = docsRes.items || [];
         totalDocs += docs.length;
       } catch {
@@ -64,7 +63,8 @@ onMounted(async () => {
         <p class="eyebrow">CONTROL CENTER</p>
         <h2>工作区概览</h2>
         <p class="page-description">
-          高效管理团队知识库与向量数据，调测高质量 RAG 检索结果，并轻松接入各类 Agent 框架。
+          高效管理团队知识库与向量数据，调测高质量 RAG 检索结果，并轻松接入各类
+          Agent 框架。
         </p>
       </div>
       <div class="header-chip">
@@ -72,16 +72,6 @@ onMounted(async () => {
         <span>Antler RAG · Admin</span>
       </div>
     </div>
-
-    <!-- Password Change Alert -->
-    <el-alert
-      v-if="mustChange"
-      title="安全提醒：请先在 API 中修改初始密码后重新登录。"
-      type="warning"
-      show-icon
-      :closable="false"
-      class="notice"
-    />
 
     <!-- Stat Grid -->
     <div class="stats-grid">
@@ -129,7 +119,9 @@ onMounted(async () => {
         </div>
         <div class="card-content">
           <h4>构建知识库与上传文档</h4>
-          <p>支持 TXT、Markdown、PDF、DOCX 等多样格式，自动提取文本与向量切块。</p>
+          <p>
+            支持 TXT、Markdown、PDF、DOCX 等多样格式，自动提取文本与向量切块。
+          </p>
           <router-link to="/knowledge-bases" class="card-action">
             前往知识库 <el-icon><ArrowRight /></el-icon>
           </router-link>
@@ -143,7 +135,9 @@ onMounted(async () => {
         </div>
         <div class="card-content">
           <h4>调测验证向量检索效果</h4>
-          <p>输入自然语言提问，即时透视语义召回匹配度与底层文档 Context 片段。</p>
+          <p>
+            输入自然语言提问，即时透视语义召回匹配度与底层文档 Context 片段。
+          </p>
           <router-link to="/retrieve" class="card-action">
             前往检索调试 <el-icon><ArrowRight /></el-icon>
           </router-link>
@@ -157,7 +151,9 @@ onMounted(async () => {
         </div>
         <div class="card-content">
           <h4>创建凭证与 Agent 接入</h4>
-          <p>按需分配细粒度 Scope 凭证，生成 cURL、Python 或 JS 代码直连 API。</p>
+          <p>
+            按需分配细粒度 Scope 凭证，生成 cURL、Python 或 JS 代码直连 API。
+          </p>
           <button class="card-action-btn" @click="showCodeModal = true">
             生成 API 代码 <el-icon><ArrowRight /></el-icon>
           </button>
@@ -173,7 +169,9 @@ onMounted(async () => {
             <span class="eyebrow">DESIGNED FOR AGENTS</span>
             <h3>为企业级 Agent 提供<br />极速、可靠的知识基座</h3>
             <p>
-              Antler Knowledge 采用同源单容器轻量设计，无缝提供管理控制台与高并发 OpenAPI 接入端点。
+              Antler Knowledge
+              采用同源单容器轻量设计，无缝提供管理控制台与高并发 OpenAPI
+              接入端点。
             </p>
             <div class="intro-actions">
               <router-link to="/knowledge-bases" class="btn-primary-link">
@@ -209,7 +207,8 @@ onMounted(async () => {
             <strong>Bearer / API Key</strong>
           </div>
           <p class="secure-note">
-            前端浏览器仅处理管理与调试操作，部署级 LLM Key 永远不会泄露到客户端。未配置大模型密钥时，系统仍可作为高质召回引擎使用。
+            前端浏览器仅处理管理与调试操作，部署级 LLM Key
+            永远不会泄露到客户端。未配置大模型密钥时，系统仍可作为高质召回引擎使用。
           </p>
         </div>
       </article>
@@ -303,9 +302,18 @@ onMounted(async () => {
   border-radius: 6px;
 }
 
-.card-step-badge.blue { color: #3b82f6; background: #eff6ff; }
-.card-step-badge.emerald { color: #10b981; background: #ecfdf5; }
-.card-step-badge.violet { color: #8b5cf6; background: #f5f3ff; }
+.card-step-badge.blue {
+  color: #3b82f6;
+  background: #eff6ff;
+}
+.card-step-badge.emerald {
+  color: #10b981;
+  background: #ecfdf5;
+}
+.card-step-badge.violet {
+  color: #8b5cf6;
+  background: #f5f3ff;
+}
 
 .card-icon-box {
   display: grid;
@@ -317,9 +325,18 @@ onMounted(async () => {
   margin-bottom: 16px;
 }
 
-.card-icon-box.blue { color: #3b82f6; background: #eff6ff; }
-.card-icon-box.emerald { color: #10b981; background: #ecfdf5; }
-.card-icon-box.violet { color: #8b5cf6; background: #f5f3ff; }
+.card-icon-box.blue {
+  color: #3b82f6;
+  background: #eff6ff;
+}
+.card-icon-box.emerald {
+  color: #10b981;
+  background: #ecfdf5;
+}
+.card-icon-box.violet {
+  color: #8b5cf6;
+  background: #f5f3ff;
+}
 
 .card-content h4 {
   margin: 0 0 8px;

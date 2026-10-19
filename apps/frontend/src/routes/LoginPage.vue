@@ -1,52 +1,139 @@
 <script setup lang="ts">
-import { ref } from "vue";
-import {
-  ArrowRight,
-  Lock,
-  User,
-  Key,
-} from "@element-plus/icons-vue";
+import { ref, computed, onUnmounted } from "vue";
+import { ArrowRight, Lock, User } from "@element-plus/icons-vue";
 import { useRouter } from "vue-router";
-import { api } from "../lib/request";
-import { saveAuth } from "../composables/useAuth";
+import { supabase, loadProfile } from "../composables/useAuth";
 import BrandLogo from "../components/BrandLogo.vue";
 
 const router = useRouter();
-const email = ref("admin@example.com");
-const password = ref("123456");
+const email = ref("");
+const password = ref("");
+const token = ref("");
+const sentEmail = ref("");
+const signup = ref(false);
 const error = ref("");
+const notice = ref("");
 const loading = ref(false);
+const resendAt = ref(0);
+const now = ref(Date.now());
+const secondsLeft = computed(() =>
+  Math.max(0, Math.ceil((resendAt.value - now.value) / 1000)),
+);
+const timer = window.setInterval(() => {
+  now.value = Date.now();
+}, 1000);
+onUnmounted(() => window.clearInterval(timer));
 
-async function login() {
-  if (!email.value || !password.value) return;
+function message(cause: unknown) {
+  const code = (cause as { code?: string })?.code;
+  return (
+    (
+      {
+        invalid_credentials: "邮箱或密码不正确。",
+        email_not_confirmed: "邮箱尚未验证，请切换到注册并重新发送验证码。",
+        otp_expired: "验证码错误或已过期。",
+        over_email_send_rate_limit: "发送过于频繁，请稍后再试。",
+        over_request_rate_limit: "操作过于频繁，请稍后再试。",
+      } as Record<string, string>
+    )[code || ""] ||
+    (cause instanceof Error ? cause.message : "登录失败，请稍后重试。")
+  );
+}
+async function enter() {
+  await loadProfile();
+  await router.push("/");
+}
+async function resend() {
+  if (loading.value || secondsLeft.value > 0) return;
   loading.value = true;
   error.value = "";
   try {
-    const result = await api<any>("/api/v1/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email: email.value, password: password.value }),
+    const { error: cause } = await (
+      await supabase()
+    ).auth.resend({
+      email: sentEmail.value || email.value.trim(),
+      type: "signup",
     });
-    saveAuth(result.token, result.user);
-    router.push("/");
-  } catch (e: any) {
-    error.value = e.message || "登录失败，请检查账号密码";
+    if (cause) throw cause;
+    sentEmail.value ||= email.value.trim();
+    resendAt.value = Date.now() + 60_000;
+    notice.value = "验证码已发送，请查看邮箱。";
+  } catch (cause) {
+    error.value = message(cause);
   } finally {
     loading.value = false;
   }
+}
+async function login() {
+  if (loading.value) return;
+  loading.value = true;
+  error.value = "";
+  notice.value = "";
+  try {
+    const client = await supabase();
+    if (!signup.value) {
+      const { error: cause } = await client.auth.signInWithPassword({
+        email: email.value.trim(),
+        password: password.value,
+      });
+      if (cause) throw cause;
+      await enter();
+    } else if (sentEmail.value) {
+      if (!/^\d{6}$/.test(token.value))
+        throw new Error("请输入 6 位数字验证码。");
+      const { error: cause } = await client.auth.verifyOtp({
+        email: sentEmail.value,
+        token: token.value,
+        type: "signup",
+      });
+      if (cause) throw cause;
+      await enter();
+    } else {
+      if (secondsLeft.value > 0) return;
+      const { data, error: cause } = await client.auth.signUp({
+        email: email.value.trim(),
+        password: password.value,
+      });
+      if (cause) throw cause;
+      if (data.user?.identities?.length === 0)
+        throw new Error("该邮箱已注册，请直接使用 Antler 账号登录。");
+      password.value = "";
+      if (data.session) {
+        await enter();
+        return;
+      }
+      sentEmail.value = email.value.trim();
+      resendAt.value = Date.now() + 60_000;
+      notice.value = "验证码已发送，请查看邮箱。";
+    }
+  } catch (cause) {
+    error.value = message(cause);
+  } finally {
+    loading.value = false;
+  }
+}
+function switchMode() {
+  signup.value = !signup.value;
+  sentEmail.value =
+    token.value =
+    password.value =
+    error.value =
+    notice.value =
+      "";
 }
 </script>
 
 <template>
   <main class="login-page">
     <header class="login-top-brand">
-      <BrandLogo class="brand-mark" /><strong>ANTLER</strong
-      ><i>/</i><span>Knowledge Core</span>
+      <BrandLogo class="brand-mark" /><strong>ANTLER</strong><i>/</i
+      ><span>Knowledge Core</span>
     </header>
     <section class="login-card">
       <div class="login-heading">
         <BrandLogo class="heading-mark" />
-        <h1>登录 Antler 控制台</h1>
-        <span>企业知识库与向量检索管理平台</span>
+        <h1>{{ signup ? "注册 Antler 账号" : "登录 Antler 控制台" }}</h1>
+        <span>与 Antler 共用邮箱和密码</span>
       </div>
       <el-alert
         v-if="error"
@@ -57,43 +144,88 @@ async function login() {
         class="login-alert"
       />
       <el-form class="login-form" label-position="top" @submit.prevent="login">
-        <el-form-item label="账号 / 邮箱"
+        <el-form-item label="邮箱"
           ><el-input
             v-model="email"
-            autocomplete="username"
-            placeholder="admin@antler.internal"
+            type="email"
+            :disabled="loading || !!sentEmail"
+            required
+            autocomplete="email"
+            placeholder="you@example.com"
             size="large"
             ><template #prefix
               ><el-icon><User /></el-icon></template></el-input
         ></el-form-item>
-        <el-form-item label="登录密码"
+        <el-form-item v-if="!sentEmail" label="密码"
           ><el-input
             v-model="password"
-            type="text"
-            autocomplete="current-password"
+            type="password"
+            show-password
+            required
+            :minlength="signup ? 6 : undefined"
+            :disabled="loading"
+            :autocomplete="signup ? 'new-password' : 'current-password'"
             placeholder="请输入登录密码"
             size="large"
             ><template #prefix
               ><el-icon><Lock /></el-icon></template></el-input
         ></el-form-item>
+        <el-form-item v-if="sentEmail" label="邮箱验证码">
+          <el-input
+            v-model="token"
+            inputmode="numeric"
+            maxlength="6"
+            autocomplete="one-time-code"
+            required
+            :disabled="loading"
+          />
+        </el-form-item>
+        <p v-if="notice" role="status">{{ notice }}</p>
         <el-button
           type="primary"
           native-type="submit"
           :loading="loading"
           class="login-submit-btn"
-          >登录控制台 <el-icon class="ml-1"><ArrowRight /></el-icon
+          >{{
+            loading
+              ? "请稍候"
+              : !signup
+                ? "登录控制台"
+                : sentEmail
+                  ? "验证并完成注册"
+                  : "注册并发送验证码"
+          }}
+          <el-icon class="ml-1"><ArrowRight /></el-icon
         ></el-button>
       </el-form>
-      <div class="session-row">
-        <label><input type="checkbox" checked /> 记住此设备 (30天)</label
-        ><span><i></i>TLS 加密就绪</span>
+      <div v-if="signup" class="session-row">
+        <button
+          type="button"
+          :disabled="loading || secondsLeft > 0"
+          @click="resend"
+        >
+          {{
+            secondsLeft > 0
+              ? `${secondsLeft} 秒后可重发`
+              : "已有验证码？重新发送"
+          }}
+        </button>
+        <button
+          v-if="sentEmail"
+          type="button"
+          :disabled="loading"
+          @click="
+            sentEmail = '';
+            token = '';
+            notice = '';
+          "
+        >
+          更换邮箱
+        </button>
       </div>
-      <div class="login-divider"><span>或通过统一身份登录</span></div>
-      <div class="sso-row">
-        <button type="button">
-          <el-icon><Key /></el-icon>SSO / OIDC</button
-        ><button type="button">⌘ GitHub</button>
-      </div>
+      <el-button text :disabled="loading" @click="switchMode">{{
+        signup ? "已有账号？登录" : "没有账号？注册"
+      }}</el-button>
     </section>
     <footer class="login-footer">
       <span>© 2025 Antler Knowledge RAG · v2.4.0</span>

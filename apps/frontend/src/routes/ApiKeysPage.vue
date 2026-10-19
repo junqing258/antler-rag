@@ -12,7 +12,7 @@ import {
 } from "@element-plus/icons-vue";
 import { ElMessageBox, ElMessage } from "element-plus";
 import { api } from "../lib/request";
-import { authState } from "../composables/useAuth";
+import { authState, accessToken } from "../composables/useAuth";
 import { requestId } from "../lib/requestId";
 import ApiCodeSnippetModal from "../components/ApiCodeSnippetModal.vue";
 
@@ -30,7 +30,7 @@ async function downloadSkill() {
   try {
     const response = await fetch("/api/v1/agent-skill/download", {
       headers: {
-        Authorization: `Bearer ${authState.token}`,
+        Authorization: `Bearer ${await accessToken()}`,
         "x-request-id": requestId(),
       },
     });

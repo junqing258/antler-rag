@@ -10,16 +10,17 @@ def test_chat_accepts_message_body_field(tmp_path: Path) -> None:
     settings = Settings(
         data_dir=tmp_path,
         bootstrap_admin_email="admin@example.com",
-        bootstrap_admin_password="a-long-bootstrap-password",
     )
     with TestClient(create_app(settings)) as client:
-        login = client.post(
-            "/api/v1/auth/login",
-            json={"email": "admin@example.com", "password": "a-long-bootstrap-password"},
+        assert (
+            client.get(
+                "/api/v1/auth/me", headers={"Authorization": "Bearer test-admin"}
+            ).status_code
+            == 200
         )
         response = client.post(
             "/api/v1/chat",
-            headers={"Authorization": f"Bearer {login.json()['token']}"},
+            headers={"Authorization": "Bearer test-admin"},
             json={
                 "knowledge_base_id": "missing-knowledge-base",
                 "message": "Agent 工具有哪些分类",

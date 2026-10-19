@@ -24,7 +24,7 @@ from rag.graph_store import GraphStore
 from routers import ALL_ROUTERS
 from services.errors import APIError
 from utils.logging import configure_logging
-from utils.security import new_request_id, password_hash
+from utils.security import new_request_id
 
 logger = configure_logging()
 
@@ -36,11 +36,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         database = Database(settings.db_path)
         database.initialize()
-        if settings.bootstrap_admin_email and settings.bootstrap_admin_password:
-            database.bootstrap_admin(
-                settings.bootstrap_admin_email,
-                password_hash.hash(settings.bootstrap_admin_password),
-            )
         app.state.settings = settings
         app.state.db = database
         app.state.store = RAGStore(settings)

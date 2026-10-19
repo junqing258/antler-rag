@@ -13,7 +13,6 @@ import {
   Reading,
   Operation,
 } from "@element-plus/icons-vue";
-import { api } from "../lib/request";
 import { authState } from "../composables/useAuth";
 import ApiCodeSnippetModal from "../components/ApiCodeSnippetModal.vue";
 import BrandLogo from "../components/BrandLogo.vue";
@@ -24,12 +23,8 @@ const isCollapsed = ref(false);
 const showCodeModal = ref(false);
 const isAdmin = computed(() => authState.user?.role === "admin");
 async function logout() {
-  try {
-    await api("/api/v1/auth/logout", { method: "POST" });
-  } finally {
-    authState.clear();
-    router.push("/login");
-  }
+  await authState.clear();
+  await router.push("/login");
 }
 </script>
 
@@ -107,7 +102,9 @@ async function logout() {
           </button>
           <div class="user-identity">
             <div>
-              <strong>{{ isAdmin ? "Administrator" : authState.user?.role }}</strong
+              <strong>{{
+                isAdmin ? "Administrator" : authState.user?.role
+              }}</strong
               ><span>{{ authState.user?.email }}</span>
             </div>
             <i>{{ authState.user?.email?.slice(0, 1).toUpperCase() }}</i

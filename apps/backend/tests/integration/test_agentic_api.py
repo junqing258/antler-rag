@@ -10,15 +10,16 @@ def test_agentic_endpoint_is_disabled_by_default(tmp_path: Path) -> None:
     settings = Settings(
         data_dir=tmp_path,
         bootstrap_admin_email="admin@example.com",
-        bootstrap_admin_password="a-long-bootstrap-password",
         agentic_enabled=False,
     )
     with TestClient(create_app(settings)) as client:
-        login = client.post(
-            "/api/v1/auth/login",
-            json={"email": "admin@example.com", "password": "a-long-bootstrap-password"},
+        assert (
+            client.get(
+                "/api/v1/auth/me", headers={"Authorization": "Bearer test-admin"}
+            ).status_code
+            == 200
         )
-        headers = {"Authorization": f"Bearer {login.json()['token']}"}
+        headers = {"Authorization": "Bearer test-admin"}
         knowledge_base = client.post(
             "/api/v1/knowledge-bases", json={"name": "Test KB"}, headers=headers
         ).json()
@@ -36,15 +37,16 @@ def test_agentic_endpoint_requires_its_dedicated_api_key_scope(tmp_path: Path) -
     settings = Settings(
         data_dir=tmp_path,
         bootstrap_admin_email="admin@example.com",
-        bootstrap_admin_password="a-long-bootstrap-password",
         agentic_enabled=False,
     )
     with TestClient(create_app(settings)) as client:
-        login = client.post(
-            "/api/v1/auth/login",
-            json={"email": "admin@example.com", "password": "a-long-bootstrap-password"},
+        assert (
+            client.get(
+                "/api/v1/auth/me", headers={"Authorization": "Bearer test-admin"}
+            ).status_code
+            == 200
         )
-        headers = {"Authorization": f"Bearer {login.json()['token']}"}
+        headers = {"Authorization": "Bearer test-admin"}
         knowledge_base = client.post(
             "/api/v1/knowledge-bases", json={"name": "Test KB"}, headers=headers
         ).json()

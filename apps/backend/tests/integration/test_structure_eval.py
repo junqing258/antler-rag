@@ -23,7 +23,6 @@ def test_fixed_handbook_questions_compare_evidence_and_record_cost(tmp_path):
             _env_file=None,
             data_dir=tmp_path,
             bootstrap_admin_email="admin@example.com",
-            bootstrap_admin_password="a-long-bootstrap-password",
         )
     )
     report = {
@@ -33,10 +32,7 @@ def test_fixed_handbook_questions_compare_evidence_and_record_cost(tmp_path):
         "strategies": {},
     }
     with TestClient(application) as client:
-        token = client.post(
-            "/api/v1/auth/login",
-            json={"email": "admin@example.com", "password": "a-long-bootstrap-password"},
-        ).json()["token"]
+        token = "test-admin"
         headers = {"Authorization": f"Bearer {token}"}
         for strategy in ("recursive", "structure"):
             kb = client.post(

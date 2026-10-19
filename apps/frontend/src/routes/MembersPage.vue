@@ -1,45 +1,17 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { Plus, UserFilled, Delete, User } from "@element-plus/icons-vue";
+import { Delete } from "@element-plus/icons-vue";
 import { ElMessageBox, ElMessage } from "element-plus";
 import { api } from "../lib/request";
 
 const items = ref<any[]>([]);
-const email = ref("");
-const password = ref("");
-const role = ref("viewer");
 const error = ref("");
-const loading = ref(false);
 
 async function load() {
   try {
     items.value = (await api<any>("/api/v1/users")).items || [];
   } catch (e: any) {
     error.value = e.message;
-  }
-}
-
-async function add() {
-  if (!email.value.trim() || !password.value) return;
-  loading.value = true;
-  error.value = "";
-  try {
-    await api("/api/v1/users", {
-      method: "POST",
-      body: JSON.stringify({
-        email: email.value,
-        initial_password: password.value,
-        role: role.value,
-      }),
-    });
-    email.value = "";
-    password.value = "";
-    ElMessage.success("成员成功添加！");
-    await load();
-  } catch (e: any) {
-    error.value = e.message;
-  } finally {
-    loading.value = false;
   }
 }
 
@@ -65,16 +37,16 @@ async function confirmRemove(item: any) {
   }
 }
 
-function getRoleTagType(r: string) {
-  if (r === "admin") return "danger";
-  if (r === "editor") return "warning";
-  return "info";
-}
-
-function getRoleLabel(r: string) {
-  if (r === "admin") return "管理员";
-  if (r === "editor") return "编辑者";
-  return "只读成员";
+async function updateMember(item: any, patch: Record<string, string>) {
+  try {
+    await api(`/api/v1/users/${item.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+    await load();
+  } catch (cause: any) {
+    error.value = cause.message;
+  }
 }
 
 onMounted(load);
@@ -93,55 +65,19 @@ onMounted(load);
       </div>
     </div>
 
-    <el-alert v-if="error" :title="error" type="error" show-icon class="notice" />
+    <el-alert
+      v-if="error"
+      :title="error"
+      type="error"
+      show-icon
+      class="notice"
+    />
 
-    <!-- Add Member Form Panel -->
-    <article class="panel">
-      <div class="panel-header">
-        <div>
-          <h3 class="panel-title">添加新成员</h3>
-          <p class="panel-subtitle">首次初始化的账号须在 24 小时内登录并修改密码</p>
-        </div>
-      </div>
-
-      <div class="panel-body">
-        <el-form class="member-form" @submit.prevent="add">
-          <div class="form-item">
-            <label class="form-label">成员 Email 邮箱</label>
-            <el-input v-model="email" placeholder="member@company.com" />
-          </div>
-
-          <div class="form-item">
-            <label class="form-label">初始临时密码</label>
-            <el-input
-              v-model="password"
-              type="password"
-              show-password
-              placeholder="设置临时登录密码"
-            />
-          </div>
-
-          <div class="form-item role-item">
-            <label class="form-label">权限角色</label>
-            <el-select v-model="role">
-              <el-option value="admin" label="Administrator (管理员)" />
-              <el-option value="editor" label="Editor (编辑者)" />
-              <el-option value="viewer" label="Viewer (只读成员)" />
-            </el-select>
-          </div>
-
-          <el-button
-            type="primary"
-            native-type="submit"
-            :loading="loading"
-            :disabled="!email.trim() || !password"
-            class="submit-btn"
-          >
-            <el-icon class="mr-1"><Plus /></el-icon>添加成员
-          </el-button>
-        </el-form>
-      </div>
-    </article>
+    <el-alert
+      title="成员首次使用 Antler 账号登录后会自动加入，默认为只读成员。"
+      type="info"
+      :closable="false"
+    />
 
     <!-- Member List Panel -->
     <article class="panel member-list">
@@ -167,25 +103,29 @@ onMounted(load);
 
           <el-table-column prop="role" label="分配角色" min-width="160">
             <template #default="s">
-              <el-tag
-                :type="getRoleTagType(s.row.role)"
-                effect="light"
-                size="default"
+              <el-select
+                :model-value="s.row.role"
+                @change="(role: string) => updateMember(s.row, { role })"
               >
-                {{ getRoleLabel(s.row.role) }} ({{ s.row.role }})
-              </el-tag>
+                <el-option value="admin" label="管理员" />
+                <el-option value="editor" label="编辑者" />
+                <el-option value="viewer" label="只读成员" />
+              </el-select>
             </template>
           </el-table-column>
 
           <el-table-column prop="status" label="状态" width="140">
             <template #default="s">
-              <span class="status" :class="s.row.status">{{ s.row.status }}</span>
+              <span class="status" :class="s.row.status">{{
+                s.row.status
+              }}</span>
             </template>
           </el-table-column>
 
           <el-table-column label="操作" width="110" align="right">
             <template #default="s">
               <el-button
+                v-if="s.row.status === 'active'"
                 link
                 type="danger"
                 size="small"
@@ -193,6 +133,12 @@ onMounted(load);
               >
                 <el-icon class="mr-1"><Delete /></el-icon>移除
               </el-button>
+              <el-button
+                v-if="s.row.status === 'disabled'"
+                link
+                @click="updateMember(s.row, { status: 'active' })"
+                >启用</el-button
+              >
             </template>
           </el-table-column>
         </el-table>

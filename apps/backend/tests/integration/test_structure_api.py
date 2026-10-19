@@ -8,14 +8,10 @@ def test_structure_configuration_pagination_scopes_and_source_metadata(tmp_path)
     settings = Settings(
         data_dir=tmp_path,
         bootstrap_admin_email="admin@example.com",
-        bootstrap_admin_password="a-long-bootstrap-password",
     )
     application = create_app(settings)
     with TestClient(application) as client:
-        token = client.post(
-            "/api/v1/auth/login",
-            json={"email": "admin@example.com", "password": "a-long-bootstrap-password"},
-        ).json()["token"]
+        token = "test-admin"
         headers = {"Authorization": f"Bearer {token}"}
         kb = client.post(
             "/api/v1/knowledge-bases",
@@ -107,14 +103,10 @@ def test_recursive_chunks_have_current_metadata_and_no_invented_structure(tmp_pa
     settings = Settings(
         data_dir=tmp_path,
         bootstrap_admin_email="admin@example.com",
-        bootstrap_admin_password="a-long-bootstrap-password",
     )
     application = create_app(settings)
     with TestClient(application) as client:
-        token = client.post(
-            "/api/v1/auth/login",
-            json={"email": "admin@example.com", "password": "a-long-bootstrap-password"},
-        ).json()["token"]
+        token = "test-admin"
         headers = {"Authorization": f"Bearer {token}"}
         kb = client.post(
             "/api/v1/knowledge-bases", headers=headers, json={"name": "Recursive"}

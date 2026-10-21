@@ -185,7 +185,7 @@ function switchMode() {
           type="primary"
           native-type="submit"
           :loading="loading"
-          class="login-submit-btn"
+          class="login-submit-btn mb-2"
           >{{
             loading
               ? "请稍候"
@@ -198,7 +198,7 @@ function switchMode() {
           <el-icon class="ml-1"><ArrowRight /></el-icon
         ></el-button>
       </el-form>
-      <div v-if="signup" class="session-row">
+      <div v-if="signup" class="session-row mb-2">
         <button
           type="button"
           :disabled="loading || secondsLeft > 0"
@@ -223,7 +223,7 @@ function switchMode() {
           更换邮箱
         </button>
       </div>
-      <el-button text :disabled="loading" @click="switchMode">{{
+      <el-button text class="px-0" :disabled="loading" @click="switchMode" >{{
         signup ? "已有账号？登录" : "没有账号？注册"
       }}</el-button>
     </section>
@@ -339,7 +339,6 @@ function switchMode() {
 .session-row {
   display: flex;
   justify-content: space-between;
-  margin: 12px 0 16px;
   color: #3f4850;
   font-size: 12px;
 }

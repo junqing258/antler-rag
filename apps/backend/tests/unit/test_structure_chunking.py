@@ -83,7 +83,7 @@ def test_docx_preserves_order_and_explicit_styles_for_both_strategies():
     doc.add_paragraph("表格之前")
     table = doc.add_table(rows=1, cols=2)
     table.cell(0, 0).text = "甲"
-    table.cell(0, 1).text = "甲"  # Equal independent cells must both survive.
+    table.cell(0, 1).text = "甲"  # 相等的独立单元格必须都保留。
     doc.add_paragraph("表格之后")
     style = doc.styles.add_style("Explicit outline", WD_STYLE_TYPE.PARAGRAPH)
     outline = OxmlElement("w:outlineLvl")
@@ -275,6 +275,6 @@ def test_mixed_table_rows_repeat_headers_except_character_fallback():
 def test_character_cut_sentence_suffix_is_not_reused_as_complete_overlap():
     text = "X" * 150 + "。" + "Y" * 30 + "。" + "Z" * 30 + "。"
     drafts = chunks(text, 100, 40)
-    # The X sentence cannot fit intact. Its terminal suffix must not reappear.
+    # X 句无法完整放入分块，其末尾后缀绝不能再次出现。
     assert sum(draft.content.count("X") for draft in drafts) == 150
     assert all(len(draft.content) <= 100 for draft in drafts)

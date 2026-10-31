@@ -1,4 +1,4 @@
-"""Reproducible evidence/context smoke comparison; not a semantic quality benchmark."""
+"""可复现的证据/上下文冒烟对比；不是语义质量基准。"""
 
 import json
 from pathlib import Path

@@ -101,7 +101,7 @@ async function confirmRevoke(item: any) {
     ElMessage.success("API Key 已吊销");
     await load();
   } catch {
-    // User cancelled
+    // 用户取消操作
   }
 }
 

@@ -33,7 +33,7 @@ async function confirmRemove(item: any) {
     ElMessage.success("用户已停用");
     await load();
   } catch {
-    // User cancelled
+    // 用户取消操作
   }
 }
 

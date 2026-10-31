@@ -20,7 +20,7 @@ class UnsupportedDocument(ValueError):
 
 
 def extract_text(filename: str, content: bytes) -> str:
-    """Extract text without invoking an external service."""
+    """提取文本，不调用任何外部服务。"""
     suffix = Path(filename).suffix.lower()
     if suffix not in SUPPORTED_SUFFIXES:
         supported = ", ".join(sorted(SUPPORTED_SUFFIXES))
@@ -175,7 +175,7 @@ def _text_elements(text: str, *, markdown: bool = False) -> list[DocumentElement
 def _heading_level(paragraph: Paragraph) -> int | None:
     style = paragraph.style
     visited: set[str] = set()
-    # Explicit outline levels override the style's named hierarchy.
+    # 显式的 outline 级别优先于样式的命名层级。
     properties = [paragraph._p.pPr]
     named = None
     while style is not None and style.style_id not in visited:
@@ -228,7 +228,7 @@ def _docx_elements(content: bytes) -> list[DocumentElement]:
                 cells: list[str] = []
                 previous = None
                 for cell in row.cells:
-                    # Only discard a repeated merged cell, not equal independent cells.
+                    # 只丢弃重复出现的合并单元格，不相等的独立单元格都要保留。
                     if cell._tc is not previous:
                         cells.append(cell.text.strip())
                     previous = cell._tc
@@ -253,7 +253,7 @@ def _docx_elements(content: bytes) -> list[DocumentElement]:
 
 
 def parse_document(filename: str, content: bytes) -> ParsedDocument:
-    """Parse a bounded set of block structures without guessing layout or headings."""
+    """解析有限的几种块级结构，不猜测布局或标题。"""
     suffix = Path(filename).suffix.lower()
     if suffix not in SUPPORTED_SUFFIXES:
         raise UnsupportedDocument(

@@ -245,7 +245,7 @@ def test_synthesis_only_includes_complete_blocks():
 
 
 def test_full_backup_restore_after_interrupted_rebuild(tmp_path):
-    """Each phase exits before copying Chroma; never restore underneath live handles."""
+    """每个阶段都在拷贝 Chroma 前退出；绝不在线程句柄存活时执行恢复。"""
     import os
     import shutil
     import subprocess
@@ -270,7 +270,7 @@ from pathlib import Path
 from core.config import Settings
 from rag.embeddings import ProviderEmbedding
 from rag.migrate import convert
-# Simulate process termination after indexing/graph cleanup, at the embedding call.
+# 模拟在 embedding 调用处、索引/图谱清理之后进程被终止。
 ProviderEmbedding._get_text_embeddings = lambda *args: os._exit(17)
 convert(Settings(_env_file=None, data_dir=Path(sys.argv[1]), embedding_model=None),
         apply=True, rebuild=True, report_path=Path(sys.argv[1])/'report.json')

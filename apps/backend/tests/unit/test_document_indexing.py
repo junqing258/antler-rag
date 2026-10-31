@@ -141,7 +141,7 @@ def test_graph_helper_failure_rolls_back_ready_and_compensates(context, monkeypa
             conn.execute("SELECT status FROM documents WHERE id=?", (document["id"],)).fetchone()[0]
             == "ready"
         )
-        # Another connection must not see the uncommitted ready update.
+        # 另一个连接不能看到尚未提交的 ready 状态更新。
         assert db.document(kb["id"], document["id"])["status"] == "indexing"
         raise RuntimeError("graph upsert failure")
 
@@ -237,7 +237,7 @@ def test_dry_run_uses_read_only_catalog_and_does_not_initialize_resources(
     monkeypatch.setenv("RAG_EMBEDDING_MODEL", "external-test")
     main()
     assert "strategy=structure chunks=1" in capsys.readouterr().out
-    # Read without the deliberately forbidden repository connection.
+    # 不使用被刻意禁止的仓储连接来读取。
     with sqlite3.connect(settings.db_path) as conn:
         conn.row_factory = sqlite3.Row
         assert (

@@ -8,13 +8,13 @@ from loguru import logger
 
 
 def set_logger_name(record: dict) -> bool:
-    """Use the original standard-library logger name when a record is bridged."""
+    """桥接日志时使用原始的标准库 logger 名称。"""
     record["name"] = record["extra"].get("logger_name", record["name"])
     return True
 
 
 class InterceptHandler(logging.Handler):
-    """Forward standard-library logs from dependencies to Loguru."""
+    """把依赖库的标准库日志转发到 Loguru。"""
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
@@ -34,7 +34,7 @@ class InterceptHandler(logging.Handler):
 
 @lru_cache(maxsize=1)
 def configure_logging():
-    """Configure Loguru and route Uvicorn and dependency logs through it."""
+    """配置 Loguru，并让 Uvicorn 与依赖库的日志经由它输出。"""
     logger.remove()
     logger.add(
         sys.stderr,

@@ -1,4 +1,4 @@
-"""HTTP route modules, grouped by resource rather than application lifecycle."""
+"""HTTP 路由模块，按资源而非应用生命周期分组。"""
 
 from . import admin, agentic, auth, documents, graph, health, knowledge_bases, retrieval
 

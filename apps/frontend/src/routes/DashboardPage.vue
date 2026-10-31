@@ -40,7 +40,7 @@ onMounted(async () => {
         const docs = docsRes.items || [];
         totalDocs += docs.length;
       } catch {
-        // Continue
+        // 继续处理下一个知识库
       }
     }
     stats.value.docCount = totalDocs;
@@ -48,7 +48,7 @@ onMounted(async () => {
     const keysRes = await api<any>("/api/v1/api-keys");
     stats.value.keyCount = keysRes.items?.length || 0;
   } catch {
-    // Fallback gracefully
+    // 失败时优雅降级
   } finally {
     stats.value.loading = false;
   }

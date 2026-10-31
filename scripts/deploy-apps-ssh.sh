@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-# Build the production image locally, transfer it through SSH, and recreate the
-# single-container deployment on the remote Docker host.  Application data is
-# kept in the named Docker volume declared by docker-compose.remote.yml.
+# 在本地构建生产镜像，通过 SSH 传输，并在远端 Docker 主机上重建
+# 单容器部署。应用数据保存在 docker-compose.remote.yml 声明的
+# 命名 Docker 卷中。
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

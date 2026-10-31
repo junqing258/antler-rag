@@ -1,4 +1,4 @@
-"""Stable, synthetic retrieval baseline for later vector/hybrid/agent comparisons."""
+"""为后续向量/混合/agent 对比提供稳定的合成检索基线。"""
 
 from __future__ import annotations
 

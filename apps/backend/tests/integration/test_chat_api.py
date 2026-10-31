@@ -28,6 +28,6 @@ def test_chat_accepts_message_body_field(tmp_path: Path) -> None:
             },
         )
 
-    # A parsed request reaches the business check; a missing `query` would return 422 instead.
+    # 解析后的请求会到达业务检查；缺少 `query` 时本应返回 422。
     assert response.status_code == 404
     assert response.json()["code"] == "not_found"

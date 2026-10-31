@@ -1,4 +1,4 @@
-"""HTTP tests always use local deterministic embeddings, regardless of .env."""
+"""无论 .env 如何配置，HTTP 测试始终使用本地确定性 embeddings。"""
 
 import hashlib
 import json

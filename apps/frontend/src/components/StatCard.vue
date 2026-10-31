@@ -151,7 +151,7 @@ const themeClass = computed(() => `stat-${props.color}`);
   transform: scale(1.08);
 }
 
-/* Colors */
+/* 颜色 */
 .stat-blue .stat-icon-wrapper {
   color: #315efb;
   background: #edf1ff;

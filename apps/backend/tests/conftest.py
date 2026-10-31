@@ -1,4 +1,4 @@
-"""Tests must never inherit deployment model credentials or endpoints."""
+"""测试绝不能继承部署环境的模型凭证或端点。"""
 
 import os
 

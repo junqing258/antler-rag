@@ -1,6 +1,6 @@
-// Mirrors the backend's new_request_id() (timestamp + random suffix) so logs from
-// both sides share one sortable format. crypto.getRandomValues is available in
-// every context, including plain HTTP served from a LAN address.
+// 与后端的 new_request_id()（时间戳 + 随机后缀）保持一致，
+// 使两端的日志共用同一可排序格式。crypto.getRandomValues 在
+// 所有上下文中都可用，包括通过局域网地址以纯 HTTP 提供服务时。
 export function requestId(): string {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");

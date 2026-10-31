@@ -10,7 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def find_repository_env_file(source_file: Path) -> Path | None:
-    """Find a development `.env` without assuming a fixed source-tree depth."""
+    """查找开发用 `.env` 文件，不假设源码树的固定深度。"""
     for parent in source_file.resolve().parents:
         env_file = parent / ".env"
         if env_file.is_file():
@@ -22,7 +22,7 @@ REPOSITORY_ENV_FILE = find_repository_env_file(Path(__file__))
 
 
 class Settings(BaseSettings):
-    """Runtime settings. Secrets are accepted only through environment variables."""
+    """运行时配置。密钥只通过环境变量接收。"""
 
     model_config = SettingsConfigDict(
         env_file=REPOSITORY_ENV_FILE,

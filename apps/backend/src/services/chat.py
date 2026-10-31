@@ -20,7 +20,7 @@ async def generate_answer(
     request_id: str,
     logger: Any,
 ) -> str:
-    """Call the configured OpenAI-compatible chat service for retrieved context."""
+    """调用已配置的 OpenAI 兼容聊天服务，为检索到的上下文生成回答。"""
     started = perf_counter()
     try:
         answer = await completion(

@@ -17,7 +17,7 @@ def now() -> str:
 
 
 class Database:
-    """SQLite repository for a single global knowledge workspace."""
+    """单一全局知识工作区的 SQLite 仓储。"""
 
     def __init__(self, path: Path):
         self.path = path
@@ -36,7 +36,7 @@ class Database:
             conn.close()
 
     def initialize(self) -> None:
-        """Create the current schema only in an empty database, otherwise validate it."""
+        """仅在空数据库中创建当前 schema，否则对其进行校验。"""
         with self.connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
@@ -121,7 +121,7 @@ class Database:
         return self.one("SELECT * FROM users WHERE id=?", (user_id,))
 
     def supabase_user(self, user_id: str, email: str, admin_email: str | None) -> dict[str, Any]:
-        # Never link legacy accounts by email; identity comes from Supabase only.
+        # 绝不通过邮箱关联旧账号；身份只来自 Supabase。
         stamp = now()
         self.run(
             "INSERT INTO users(id,email,password_hash,status,role,created_at,updated_at) "

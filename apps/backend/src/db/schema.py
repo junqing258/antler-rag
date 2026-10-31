@@ -1,4 +1,4 @@
-"""The application's current SQLite schema; no version upgrades or conversion."""
+"""应用当前的 SQLite schema；不做版本升级或转换。"""
 
 from __future__ import annotations
 
@@ -155,8 +155,8 @@ def validate_schema(conn: sqlite3.Connection) -> None:
             f"Database is missing current schema tables: {', '.join(sorted(missing_tables))}"
         )
     for table, expected in SCHEMA_COLUMNS.items():
-        # Queries name their columns. Physical order and unrelated tables do not
-        # affect the current schema, and need no conversion or version lookup.
+        # 查询显式指定列名。物理列顺序与无关表不会
+        # 影响当前 schema，无需转换或版本查找。
         columns = {row[1] for row in conn.execute(f'PRAGMA table_info("{table}")')}
         if columns != set(expected):
             missing = sorted(set(expected) - columns)

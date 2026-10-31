@@ -14,12 +14,12 @@ else
   exit 1
 fi
 
-# Colors for output
+# 输出用颜色
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m' # 无颜色（重置）
 
 CLI_TOOL_LABEL="$(printf '%s' "$CLI_TOOL" | awk '{print toupper(substr($0, 1, 1)) substr($0, 2)}')"
 

@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api/v1", tags=["administration"])
 
 @router.get("/agent-skill/download")
 def download_agent_skill(_: Principal = Depends(administrator)) -> Response:
-    """Package the version of the skill shipped with this application."""
+    """打包随本应用一起发布的 skill 版本。"""
     application_dir = Path(__file__).resolve().parents[2]
     candidates = (
         application_dir / "skills" / "antler-rag",

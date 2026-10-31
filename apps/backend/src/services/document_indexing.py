@@ -1,4 +1,4 @@
-"""Document replacement lifecycle shared by HTTP uploads and maintenance rebuilds."""
+"""HTTP 上传与维护重建共用的文档替换生命周期。"""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from utils.documents import extract_text, parse_document
 def prepare_drafts(
     knowledge_base: dict[str, Any], filename: str, content: bytes
 ) -> list[ChunkDraft]:
-    """Validate configuration and prepare everything before any destructive work."""
+    """在任何破坏性操作之前完成校验与全部准备工作。"""
     size, overlap = knowledge_base["chunk_size"], knowledge_base["chunk_overlap"]
     if not 100 <= size <= 4000 or not 0 <= overlap <= 1000 or overlap >= size:
         raise ValueError("Invalid knowledge base chunk size/overlap configuration")
@@ -69,7 +69,7 @@ class DocumentIndexingService:
         created_source = False
         try:
             source.parent.mkdir(parents=True, exist_ok=True)
-            # Exclusive creation prevents an unrelated existing source being overwritten/unlinked.
+            # 独占创建可防止覆盖/误删无关的已有源文件。
             with source.open("xb") as handle:
                 created_source = True
                 handle.write(content)
@@ -94,7 +94,7 @@ class DocumentIndexingService:
             created_source_in_this_attempt=created_source,
             snapshot=snapshot,
         )
-        # Indexing has committed. An old unreferenced source can now be removed.
+        # 索引已提交，此时才能移除旧的、不再被引用的源文件。
         if snapshot and snapshot["stored_filename"] != stored:
             old_source = upload_path(self.settings.uploads_dir, kb_id, snapshot["stored_filename"])
             referenced = self.database.one(
@@ -127,7 +127,7 @@ class DocumentIndexingService:
     ) -> int:
         kb_id, doc_id = knowledge_base["id"], document["id"]
         source = upload_path(self.settings.uploads_dir, kb_id, document["stored_filename"])
-        # A failed rebuild preflight leaves the old index and lifecycle state intact.
+        # 重建预检失败时，旧索引与生命周期状态保持不变。
         if drafts is None:
             drafts = prepare_source(knowledge_base, document, source)
         try:
@@ -220,7 +220,7 @@ class DocumentIndexingService:
                     restored = True
                 except Exception as cleanup_error:  # noqa: BLE001 -- preserve the original failure and record compensation failures
                     cleanup_errors.append(f"source reference restoration failed: {cleanup_error}")
-        # If restoring a live old source failed, leave both files for maintenance.
+        # 若恢复在用的旧源文件失败，则两个文件都保留，交给维护处理。
         if (
             operation == "upload"
             and created_source_in_this_attempt

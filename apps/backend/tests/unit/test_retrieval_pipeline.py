@@ -12,7 +12,7 @@ class FakeCollection:
 
     def query(self, **kwargs: object) -> dict[str, list[list[object]]]:
         self.n_results = kwargs["n_results"]  # type: ignore[assignment]
-        return {
+        result = {
             "ids": [["doc:0", "doc:1", "doc:2"]],
             "documents": [["first", "second", "third"]],
             "metadatas": [
@@ -49,6 +49,24 @@ class FakeCollection:
             "distances": [[0.1, 0.4, 0.8]],
         }
 
+        from llama_index.core.schema import TextNode
+        from llama_index.core.vector_stores.utils import node_to_metadata_dict
+
+        result["metadatas"][0] = [
+            node_to_metadata_dict(
+                TextNode(
+                    id_=node_id,
+                    text=text,
+                    metadata=metadata,
+                ),
+                remove_text=True,
+            )
+            for node_id, text, metadata in zip(
+                result["ids"][0], result["documents"][0], result["metadatas"][0], strict=True
+            )
+        ]
+        return result
+
 
 class FakeReranker:
     def __init__(self) -> None:
@@ -64,6 +82,11 @@ def make_store(reranker: FakeReranker | None = None) -> tuple[RAGStore, FakeColl
     collection = FakeCollection()
     store.collection = collection  # type: ignore[assignment]
     store.reranker = reranker
+    from rag.embeddings import ProviderEmbedding
+    from rag.vector_store import DistanceChromaStore
+
+    store.embed_model = ProviderEmbedding(lambda texts: [[1.0, 0.0] for _ in texts])
+    store.vector_store = DistanceChromaStore(chroma_collection=collection)
     return store, collection
 
 

@@ -1,4 +1,4 @@
-"""Pure, character-budgeted chunking; no persistence or model calls."""
+"""纯函数式的字符预算分块；不做持久化，也不调用模型。"""
 
 from __future__ import annotations
 
@@ -81,7 +81,7 @@ def chunk_recursive(text: str, *, chunk_size: int, chunk_overlap: int) -> list[C
 
 
 def _pack(units: list[str], budget: int) -> list[str]:
-    """Preserve every character, splitting a single oversized unit as a last resort."""
+    """保留全部字符，仅在单个单元超长时才将其拆分。"""
     result: list[str] = []
     current = ""
     for unit in units:
@@ -119,7 +119,7 @@ def _element_parts(element: DocumentElement, budget: int) -> list[str]:
                         header + part for part in _pack(normal_rows, budget - len(header))
                     )
                     normal_rows = []
-                    # A header plus one oversized row cannot retain table formatting.
+                    # 表头加上一行超长行无法保持表格格式。
                     result.extend(_pack([header + row], budget))
                 else:
                     normal_rows.append(row)
@@ -174,13 +174,13 @@ def _overlap(text: str, budget: int, *, starts_at_boundary: bool, whole_element:
         return text
     sentences = _sentences(text)
     if not starts_at_boundary:
-        # The first sentence in a character-cut fragment is only a suffix.
+        # 按字符切出的片段首句只是一个后缀。
         sentences = sentences[1:]
     tail = ""
     for sentence in reversed(sentences):
         if not sentence or not sentence.strip():
             continue
-        # A character-cut sentence is not a complete overlap unit.
+        # 按字符切出的句子不是完整的重叠单元。
         if not re.search(r"[。！？!?]|\.(?:\s|$)|\n\n", sentence):
             break
         if len(sentence) + len(tail) > budget:
@@ -267,13 +267,13 @@ def chunk_structure(
             if len(element.text) > budget:
                 emit("size")
                 plain = element.kind in {"paragraph", "list"}
-                # Leave space for complete-sentence overlap on long prose.
+                # 为长文本的完整句重叠预留空间。
                 part_budget = (
                     max(1, budget - overlap_budget - 2) if plain and overlap_budget else budget
                 )
-                # Prose/list parts preserve source characters exactly. Track sentence
-                # boundaries so a suffix of a character-cut sentence is never copied
-                # as if it were a complete overlap unit.
+                # 正文/列表部分必须逐字保留源文本。需要跟踪句子
+                # 边界，确保按字符切出的句子后缀不会被当作
+                # 完整的重叠单元复制。
                 boundaries = {0}
                 position = 0
                 if plain:

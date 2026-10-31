@@ -150,7 +150,7 @@ async def fetch_page(url: str, source: CrawlSource) -> FetchedPage:
     return await render_with_browser(response.url, source)
 ```
 
-HTTP 请求带明确 `User-Agent` 和可联系的站点 URL，遵守每主机的 token bucket 限速。支持 `If-None-Match`/`If-Modified-Since`；`304 Not Modified` 直接记为 `unchanged`，不启动浏览器。
+HTTP 请求带明确 `User-Agent` 和可联系的站点 URL，遵守每主机的 token bucket 限速。支持 `If-None-Match`/`If-Modified-Since`；只有确认 ETag/Last-Modified 代表有效正文的静态页面，`304 Not Modified` 才记为 unchanged；CSR 外壳的 304 不能证明正文未变，仍需渲染并提取正文。
 
 ### 5.2 浏览器 worker 的约束
 
@@ -242,11 +242,11 @@ extractor_version: web-extractor/1
 ```text
 1. 将 page 标记为 indexing，创建带 idempotency key 的 outbox 事件。
 2. 调用知识库“按 external_id upsert”接口，写入完整 Markdown 与 metadata。
-3. 收到成功响应后，在同一采集器事务中更新 hash、document_id、状态和 outbox。
+3. 取得 published/unchanged 终态后，在同一采集器事务中更新 hash、document_id、version_id、状态和 outbox；202 仅代表接收，继续查询自身任务状态。
 4. 调用超时/连接断开时不猜测结果；保留 outbox，以同一幂等键重试。
 ```
 
-知识库端必须支持 upsert 语义：新版本先删除该 `external_id` 旧 chunks，再写新 chunks，或使用版本号并在最后原子切换活动版本；不得每次采集都新增一个独立文档。跨向量库和关系库通常无法做到单事务，因此 `indexing`、幂等键和可重试 outbox 是必要的。
+知识库端必须支持 upsert 语义：同一 external_id 保持稳定 document，预写并验证候选版本后原子切换活动指针；不得先删除在线旧 chunks，也不得每次采集新增独立文档。版本发布与失败保留规则见[资源局部更新方案](resource-partial-update-design.md)。跨向量库和关系库通常无法做到单事务，因此 `indexing`、幂等键和可重试 outbox 是必要的。
 
 删除采用保守策略。一个 run 没发现 URL 并不代表它被删除，可能只是短暂抓取失败或站点导航变化；连续 `N=3` 次成功完成的 run 都没有发现该 URL 后才标记 `stale` 并提交删除事件。删除前再检查该 URL 不在最新 frontier 内，且不要删除人工上传的同名文档。
 
@@ -261,6 +261,9 @@ PUT /api/v1/knowledge-bases/{kb_id}/external-documents/{external_id}
 Authorization: service credential with documents:write
 
 {
+  "base_version": "ver_10",
+  "idempotency_key": "crawl-run-page-attempt-001",
+  "publish_mode": "auto",
   "filename": "web-install-guide.md",
   "content_markdown": "...",
   "metadata": {
@@ -268,12 +271,13 @@ Authorization: service credential with documents:write
     "source_id": "...",
     "canonical_url": "...",
     "content_sha256": "...",
-    "crawled_at": "..."
+    "crawled_at": "...",
+    "extractor_version": "web-extractor/1"
   }
 }
 ```
 
-该端点应只接受服务端认证、长度受限的 `external_id` 和 Markdown；它负责找到并替换同外部键的文档，沿用现有 `RAGStore` 的删除、索引与失败补偿逻辑。Chroma metadata 至少保存 `source_type`、`canonical_url`、`external_id`、`content_sha256`，使 `/retrieve` 返回的片段可展示来源链接。
+该端点仅接受绑定知识库/采集源的服务身份、长度受限的 external_id 及 Markdown，以 `(knowledge_base_id, external_id)` 定位稳定文档；复用版本化候选、预览和发布服务，禁止复用现有先删旧索引的替换失败分支。首次 base_version 为 null；重复幂等请求复用任务，基础版本冲突不覆盖。202 返回 job_id，终态为 published/unchanged/needs_review/conflict；只有前两者可确认 outbox。needs_review 由有写权限用户审核固定候选，manual 模式不自动发布。crawler 使用绑定来源的 sync-status 接口读取活动版本与自身任务结果，不取得任意正文读取权限。具体交接字段和状态约定以[资源局部更新方案 §3.1](resource-partial-update-design.md#31-从网页刷新)为准。Chroma metadata 至少保存 `source_type`、`canonical_url`、`external_id`、`content_sha256`，使 `/retrieve` 返回的片段可展示来源链接。
 
 不建议把 Playwright 及 Chromium 安装进当前应用容器：浏览器依赖、内存和安全边界与现有单容器 RAG 服务不同。以独立 crawler 容器通过 API 对接更易限权、升级和隔离；如果暂时只需要少量网页，也可以在外部运行一次性采集命令后上传 Markdown。
 
@@ -336,5 +340,5 @@ Authorization: service credential with documents:write
 1. 哪些域名、路径、负责人及授权记录进入首期 allowlist？
 2. 运行频率、最大页面数、时延和浏览器资源预算分别是多少？
 3. 站点专用 selector 由谁审核、如何版本化和回滚？
-4. 选择独立 crawler 服务还是实现 Antler 的 `external-documents` upsert API？
+4. 独立 crawler 与 Antler external-documents 版本化推送接口同时实施；上线前确认控制面鉴权、服务身份的知识库/来源绑定及任务状态查询部署地址。
 5. `robots.txt`、版权、隐私/个人信息与敏感词命中后分别采用跳过、人工审核还是删除的策略？

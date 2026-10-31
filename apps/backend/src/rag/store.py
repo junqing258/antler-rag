@@ -1,198 +1,36 @@
 from __future__ import annotations
 
-import os
+import sqlite3
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
 from pathlib import Path
-from time import perf_counter
-from typing import Any, Protocol
 
 import chromadb
-import httpx
 from chromadb.api.models.Collection import Collection
-from chromadb.api.types import Documents, EmbeddingFunction, Embeddings, Space
-from loguru import logger
+from chromadb.api.types import Documents, EmbeddingFunction
+from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
 from core.config import Settings
-from rag.chunking import CHUNKER_VERSIONS, ChunkDraft, ChunkMetadata, ChunkStrategy
-
-MAX_EMBEDDING_BATCH_SIZE = 10
-@dataclass(frozen=True)
-class RetrievedChunk(ChunkMetadata):
-    chunk_id: str
-    document_id: str
-    knowledge_base_id: str
-    filename: str
-    content: str
-    distance: float | None
-    chunk_index: int
-    rerank_score: float | None = None
-
-
-@dataclass(frozen=True)
-class IndexedChunk(ChunkMetadata):
-    """The exact text and ID accepted by Chroma during document indexing."""
-
-    chunk_id: str
-    document_id: str
-    knowledge_base_id: str
-    chunk_index: int
-    content: str
-    filename: str
-
-
-class RerankerError(RuntimeError):
-    """Raised when a requested reranker cannot be used."""
-
-
-class Reranker(Protocol):
-    def score(self, query: str, documents: Sequence[str]) -> list[float]: ...
-
-
-class TEIReranker:
-    """CrossEncoder reranking through Hugging Face Text Embeddings Inference's /rerank API."""
-
-    def __init__(self, *, base_url: str, api_key: str | None = None, client: httpx.Client | None = None):
-        self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
-        self.client = client or httpx.Client(timeout=httpx.Timeout(60, connect=10))
-
-    def close(self) -> None:
-        self.client.close()
-
-    def score(self, query: str, documents: Sequence[str]) -> list[float]:
-        if not documents:
-            return []
-        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-        started = perf_counter()
-        try:
-            response = self.client.post(f"{self.base_url}/rerank", headers=headers,
-                                        json={"query": query, "texts": list(documents)})
-            response.raise_for_status()
-            payload = response.json()
-        except (httpx.HTTPError, ValueError) as error:
-            logger.warning(
-                "reranker_request_failed candidates={candidates} error_type={error_type} "
-                "duration_ms={duration_ms:.0f}",
-                candidates=len(documents),
-                error_type=type(error).__name__,
-                duration_ms=(perf_counter() - started) * 1000,
-            )
-            raise RerankerError("Reranker request failed") from error
-        if not isinstance(payload, list):
-            raise RerankerError("Reranker returned an invalid response")
-        scores: list[float | None] = [None] * len(documents)
-        try:
-            for item in payload:
-                index = item["index"]
-                if not isinstance(index, int) or not 0 <= index < len(documents):
-                    raise ValueError
-                scores[index] = float(item["score"])
-        except (KeyError, TypeError, ValueError) as error:
-            raise RerankerError("Reranker returned an invalid response") from error
-        if any(score is None for score in scores):
-            raise RerankerError("Reranker returned an incomplete response")
-        return [float(score) for score in scores]
-
-
-class OpenAICompatibleEmbeddingFunction(EmbeddingFunction[Documents]):
-    """Embed text through an OpenAI-compatible `/embeddings` endpoint."""
-
-    def __init__(
-        self,
-        *,
-        base_url: str,
-        api_key: str,
-        model: str,
-        dimensions: int | None = None,
-        client: httpx.Client | None = None,
-    ):
-        self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
-        self.model = model
-        self.dimensions = dimensions
-        self.client = client or httpx.Client(timeout=httpx.Timeout(60, connect=10))
-
-    def __call__(self, input: Documents) -> Embeddings:
-        if not input:
-            return []
-        embeddings: Embeddings = []
-        for start in range(0, len(input), MAX_EMBEDDING_BATCH_SIZE):
-            embeddings.extend(self._embed_batch(input[start : start + MAX_EMBEDDING_BATCH_SIZE]))
-        return embeddings
-
-    def _embed_batch(self, input: Documents) -> Embeddings:
-        payload: dict[str, Any] = {"model": self.model, "input": list(input)}
-        if self.dimensions is not None:
-            payload["dimensions"] = self.dimensions
-        started = perf_counter()
-        try:
-            response = self.client.post(
-                f"{self.base_url}/embeddings",
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                json=payload,
-            )
-            response.raise_for_status()
-        except httpx.HTTPError as error:
-            status_code = error.response.status_code if isinstance(error, httpx.HTTPStatusError) else None
-            logger.warning(
-                "embedding_request_failed model={model} batch_size={batch_size} status={status} "
-                "error_type={error_type} duration_ms={duration_ms:.0f}",
-                model=self.model,
-                batch_size=len(input),
-                status=status_code,
-                error_type=type(error).__name__,
-                duration_ms=(perf_counter() - started) * 1000,
-            )
-            raise
-        logger.info(
-            "embedding_request_completed model={model} batch_size={batch_size} status={status} "
-            "duration_ms={duration_ms:.0f}",
-            model=self.model,
-            batch_size=len(input),
-            status=response.status_code,
-            duration_ms=(perf_counter() - started) * 1000,
-        )
-        data = response.json().get("data")
-        if not isinstance(data, list) or len(data) != len(input):
-            raise ValueError("Embedding provider returned an invalid response")
-        try:
-            ordered = sorted(data, key=lambda item: item["index"])
-            return [item["embedding"] for item in ordered]
-        except (KeyError, TypeError):
-            raise ValueError("Embedding provider returned an invalid response") from None
-
-    @staticmethod
-    def name() -> str:
-        return "openai_compatible"
-
-    def default_space(self) -> Space:
-        return "cosine"
-
-    @staticmethod
-    def build_from_config(config: dict[str, Any]) -> EmbeddingFunction[Documents]:
-        # Required Chroma embedding configuration hook. The injected client owns secrets.
-        return OpenAICompatibleEmbeddingFunction(
-            base_url=str(config["base_url"]),
-            api_key=os.environ.get("RAG_LLM_API_KEY", ""),
-            model=str(config["model"]),
-            dimensions=config.get("dimensions"),
-        )
-
-    def get_config(self) -> dict[str, Any]:
-        # Never place the API key in Chroma's persistent collection metadata.
-        return {"base_url": self.base_url, "model": self.model, "dimensions": self.dimensions}
+from rag.chunking import ChunkDraft, ChunkMetadata, ChunkStrategy
+from rag.contracts import IndexedChunk, RetrievedChunk
+from rag.embeddings import OpenAICompatibleEmbeddingFunction, ProviderEmbedding
+from rag.nodes import draft_node
+from rag.postprocessors import CandidatePostprocessor, Reranker, RerankerError, TEIReranker
+from rag.retrievers import ChromaRetriever
+from rag.vector_store import DistanceChromaStore
 
 
 class RAGStore:
-    """One Chroma collection filtered only by knowledge base and document."""
+    """仅按知识库与文档过滤的单一 Chroma collection。"""
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, *, maintenance: bool = False):
         settings.chroma_dir.mkdir(parents=True, exist_ok=True)
         self.client = chromadb.PersistentClient(path=str(settings.chroma_dir))
         self.embedding_function: EmbeddingFunction[Documents] | None = None
-        self.reranker: Reranker | None = TEIReranker(base_url=settings.reranker_base_url,
-                                                      api_key=settings.reranker_api_key) if settings.reranker_base_url else None
+        self.reranker: Reranker | None = (
+            TEIReranker(base_url=settings.reranker_base_url, api_key=settings.reranker_api_key)
+            if settings.reranker_base_url
+            else None
+        )
         if settings.embedding_model:
             if not settings.llm_base_url or not settings.llm_api_key:
                 raise ValueError(
@@ -204,18 +42,50 @@ class RAGStore:
                 model=settings.embedding_model,
                 dimensions=settings.embedding_dimensions,
             )
+        names = {collection.name for collection in self.client.list_collections()}
+        target = f"{settings.embedding_collection}-li-v1"
+        if (
+            not maintenance
+            and target not in names
+            and settings.embedding_collection in names
+            and self.client.get_collection(
+                settings.embedding_collection, embedding_function=None
+            ).count()
+        ):
+            raise ValueError("Legacy index exists; stop writers and run rag.migrate before startup")
+        if not maintenance and target not in names and settings.db_path.is_file():
+            with sqlite3.connect(
+                settings.db_path.resolve().as_uri() + "?mode=ro", uri=True
+            ) as conn:
+                if conn.execute(
+                    "SELECT 1 FROM documents WHERE status != 'deleted' AND chunk_count > 0 LIMIT 1"
+                ).fetchone():
+                    raise ValueError(
+                        "Existing documents require offline rag.migrate before startup"
+                    )
         self.collection: Collection = self.client.get_or_create_collection(
-            name=settings.embedding_collection,
+            name=f"{settings.embedding_collection}-li-v1",
             metadata={
-                "hnsw:space": "cosine",
+                "index_format": "li-v1",
+                "migration_complete": not maintenance,
                 "embedding_model": settings.embedding_model or "chroma_default",
                 "embedding_dimensions": settings.embedding_dimensions or 0,
             },
-            embedding_function=self.embedding_function,
+            embedding_function=None,
+            configuration={"hnsw": {"space": "cosine"}},
         )
 
+        if self.collection.configuration.get("hnsw", {}).get("space") != "cosine":
+            raise ValueError("Index distance space mismatch; rebuild with cosine configuration")
+        if self.collection.metadata.get("index_format") != "li-v1":
+            raise ValueError("Index format mismatch; run the offline index conversion first")
+        if not maintenance and not self.collection.metadata.get("migration_complete", False):
+            raise ValueError("Index conversion incomplete; finish rag.migrate before startup")
+        self.embed_model = ProviderEmbedding(self.embedding_function or DefaultEmbeddingFunction())
+        self.vector_store = DistanceChromaStore(chroma_collection=self.collection)
+
     def recreate_collection(self) -> None:
-        """Delete and recreate only this embedding-space collection for a full reindex."""
+        """全量重建索引时，仅删除并重建此 embedding 空间的 collection。"""
         try:
             self.client.delete_collection(self.collection.name)
         except ValueError:
@@ -223,8 +93,11 @@ class RAGStore:
         self.collection = self.client.get_or_create_collection(
             name=self.collection.name,
             metadata=self.collection.metadata,
-            embedding_function=self.embedding_function,
+            embedding_function=None,
+            configuration={"hnsw": {"space": "cosine"}},
         )
+
+        self.vector_store = DistanceChromaStore(chroma_collection=self.collection)
 
     def close(self) -> None:
         if isinstance(self.embedding_function, OpenAICompatibleEmbeddingFunction):
@@ -236,57 +109,102 @@ class RAGStore:
     def _where(knowledge_base_id: str, document_ids: list[str] | None = None) -> dict:
         terms: list[dict] = [{"knowledge_base_id": knowledge_base_id}]
         if document_ids:
-            terms.append({"document_id": document_ids[0]} if len(document_ids) == 1 else {"document_id": {"$in": document_ids}})
+            terms.append(
+                {"document_id": document_ids[0]}
+                if len(document_ids) == 1
+                else {"document_id": {"$in": document_ids}}
+            )
         return terms[0] if len(terms) == 1 else {"$and": terms}
 
     def index_drafts(
-        self, *, knowledge_base_id: str, document_id: str, filename: str,
-        drafts: Sequence[ChunkDraft], digest: str, chunk_strategy: ChunkStrategy,
+        self,
+        *,
+        knowledge_base_id: str,
+        document_id: str,
+        filename: str,
+        drafts: Sequence[ChunkDraft],
+        digest: str,
+        chunk_strategy: ChunkStrategy,
     ) -> int:
         if not drafts or any(not draft.content.strip() for draft in drafts):
             raise ValueError("The document did not contain extractable text.")
-        self.collection.add(
-            ids=[f"{document_id}:{index}" for index in range(len(drafts))],
-            documents=[draft.content for draft in drafts],
-            metadatas=[{
-                **draft.chroma_metadata(), "chunk_strategy": chunk_strategy,
-                "chunker_version": CHUNKER_VERSIONS[chunk_strategy],
-                "knowledge_base_id": knowledge_base_id, "document_id": document_id,
-                "filename": filename, "sha256": digest, "chunk_index": index,
-            } for index, draft in enumerate(drafts)],
-        )
+        nodes = [
+            draft_node(
+                draft,
+                knowledge_base_id=knowledge_base_id,
+                document_id=document_id,
+                filename=filename,
+                digest=digest,
+                chunk_index=index,
+                chunk_strategy=chunk_strategy,
+            )
+            for index, draft in enumerate(drafts)
+        ]
+        vectors = self.embed_model.get_text_embedding_batch([node.text for node in nodes])
+        for node, vector in zip(nodes, vectors, strict=True):
+            node.embedding = vector
+        self.vector_store.add(nodes)
         return len(drafts)
 
     @staticmethod
     def similarity_score(distance: float | None) -> float:
-        """Map Chroma cosine distance to cosine similarity, clamped to the UI's 0–1 range."""
+        """把 Chroma 余弦距离映射为余弦相似度，并收敛到 UI 的 0–1 区间。"""
         if distance is None:
             return 0.0
         return max(0.0, min(1.0, 1.0 - distance))
 
-    def retrieve(self, *, knowledge_base_id: str, query: str, top_k: int, document_ids: list[str] | None = None, score_threshold: float | None = None, rerank: bool = False) -> list[RetrievedChunk]:
+    def retrieve(
+        self,
+        *,
+        knowledge_base_id: str,
+        query: str,
+        top_k: int,
+        document_ids: list[str] | None = None,
+        score_threshold: float | None = None,
+        rerank: bool = False,
+    ) -> list[RetrievedChunk]:
         if rerank and self.reranker is None:
-            raise RerankerError("Reranking is not configured. Set RAG_RERANKER_BASE_URL before enabling rerank.")
-        # A CrossEncoder needs a larger candidate set to improve the final top-k order.
+            raise RerankerError(
+                "Reranking is not configured. Set RAG_RERANKER_BASE_URL before enabling rerank."
+            )
+        # CrossEncoder 需要更大的候选集才能改善最终 top-k 的排序。
         candidate_count = min(100, top_k * 4) if rerank else top_k
-        result = self.collection.query(query_texts=[query], n_results=candidate_count, where=self._where(knowledge_base_id, document_ids), include=["documents", "metadatas", "distances"])
-        chunks = [RetrievedChunk(chunk_id=chunk_id, document_id=str(metadata["document_id"]), knowledge_base_id=str(metadata["knowledge_base_id"]), filename=str(metadata["filename"]), content=document, distance=distance, chunk_index=int(metadata["chunk_index"]), **ChunkMetadata.from_chroma(metadata)) for chunk_id, document, metadata, distance in zip(result.get("ids", [[]])[0], result.get("documents", [[]])[0], result.get("metadatas", [[]])[0], result.get("distances", [[]])[0], strict=True)]
-        if score_threshold is not None:
-            chunks = [chunk for chunk in chunks if self.similarity_score(chunk.distance) >= score_threshold]
-        if rerank and chunks:
-            assert self.reranker is not None
-            scores = self.reranker.score(query, [chunk.content for chunk in chunks])
-            chunks = [replace(chunk, rerank_score=score) for chunk, score in zip(chunks, scores, strict=True)]
-            chunks.sort(key=lambda chunk: chunk.rerank_score if chunk.rerank_score is not None else float("-inf"), reverse=True)
-        return chunks[:top_k]
+        results = ChromaRetriever(
+            self.vector_store,
+            self.embed_model,
+            candidate_count,
+            self._where(knowledge_base_id, document_ids),
+        ).retrieve(query)
+        results = CandidatePostprocessor(
+            top_k=top_k,
+            threshold=score_threshold,
+            reranker=self.reranker if rerank else None,
+        ).postprocess_nodes(results, query_str=query)
+        chunks = [
+            RetrievedChunk(
+                chunk_id=item.node.node_id,
+                document_id=str(item.node.metadata["document_id"]),
+                knowledge_base_id=str(item.node.metadata["knowledge_base_id"]),
+                filename=str(item.node.metadata["filename"]),
+                content=item.node.text,
+                distance=item.score,
+                rerank_score=item.node.metadata.get("_rerank_score"),
+                chunk_index=int(item.node.metadata["chunk_index"]),
+                **ChunkMetadata.from_chroma(item.node.metadata),
+            )
+            for item in results
+        ]
+        return chunks
 
     def delete_document(self, knowledge_base_id: str, document_id: str) -> None:
-        payload = self.collection.get(where=self._where(knowledge_base_id, [document_id]), include=[])
+        payload = self.collection.get(
+            where=self._where(knowledge_base_id, [document_id]), include=[]
+        )
         if payload.get("ids"):
             self.collection.delete(ids=payload["ids"])
 
     def document_chunks(self, knowledge_base_id: str, document_id: str) -> list[IndexedChunk]:
-        """Read the public Chroma records, never re-chunking source content."""
+        """读取公开的 Chroma 记录，绝不对源内容重新分块。"""
         payload = self.collection.get(
             where=self._where(knowledge_base_id, [document_id]),
             include=["documents", "metadatas"],
@@ -302,7 +220,10 @@ class RAGStore:
                 **ChunkMetadata.from_chroma(metadata),
             )
             for chunk_id, content, metadata in zip(
-                payload.get("ids", []), payload.get("documents", []), payload.get("metadatas", []), strict=True
+                payload.get("ids", []),
+                payload.get("documents", []),
+                payload.get("metadatas", []),
+                strict=True,
             )
         ]
         return sorted(chunks, key=lambda chunk: chunk.chunk_index)

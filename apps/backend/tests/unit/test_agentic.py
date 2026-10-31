@@ -81,4 +81,83 @@ def test_invalid_planner_output_stops_agent_and_returns_one_vector_fallback() ->
     assert result.answer is None
     assert result.detail == "Planner failed; returned vector sources."
     assert retrieval.queries == ["original"]
-    assert result.trace[-2].error_code == "planner_failed"
+    assert result.trace[-1].error_code == "planner_failed"
+
+
+def test_minimum_budget_returns_original_without_model_call():
+    retrieval = FakeRetrievalService()
+    agent = FakeAgent(retrieval, configured_settings(agent_max_steps=1, agent_max_llm_calls=0), [])
+    result = asyncio.run(
+        agent.answer(knowledge_base_id="kb", message="original", top_k=3, mode="auto")
+    )
+    assert result.answer is None and result.evidence
+    assert result.detail == "budget_exhausted"
+    assert retrieval.queries == ["original"]
+    assert result.trace[-1].error_code == "budget_exhausted"
+
+
+def test_last_step_answer_failure_reuses_original_sources():
+    class FailingAnswer(FakeAgent):
+        async def _generate_answer(self, message, evidence):
+            raise ValueError("bad response")
+
+    retrieval = FakeRetrievalService()
+    agent = FailingAnswer(
+        retrieval, configured_settings(agent_max_steps=3), ['{"subqueries":["extra"]}']
+    )
+    result = asyncio.run(
+        agent.answer(knowledge_base_id="kb", message="original", top_k=3, mode="auto")
+    )
+    assert result.answer is None
+    assert result.detail == "LLM failed; returned vector sources."
+    assert retrieval.queries == ["original"]
+    assert result.trace[-1].error_code == "llm_failed"
+
+
+def test_overall_deadline_during_planner_and_concurrent_state_isolation():
+    class SlowAgent(FakeAgent):
+        async def _plan(self, message):
+            await asyncio.sleep(0.08)
+            return ["extra"]
+
+    retrieval = FakeRetrievalService()
+    settings = configured_settings().model_copy(update={"agent_timeout_seconds": 0.02})
+    agent = SlowAgent(retrieval, settings, [])
+
+    async def scenario():
+        return await asyncio.gather(
+            *[
+                agent.answer(knowledge_base_id="kb", message=q, top_k=3, mode="auto")
+                for q in ["one", "two"]
+            ]
+        )
+
+    results = asyncio.run(scenario())
+    assert [r.detail for r in results] == ["timeout", "timeout"]
+    assert [r.evidence[0].chunk_id for r in results] == ["one:0", "two:0"]
+    assert sorted(retrieval.queries) == ["one", "two"]
+
+
+def test_first_retrieval_timeout_has_no_late_mutation():
+    import time
+
+    class SlowRetrieval(FakeRetrievalService):
+        def retrieve(self, **kwargs):
+            time.sleep(0.05)
+            return super().retrieve(**kwargs)
+
+    retrieval = SlowRetrieval()
+    agent = FakeAgent(
+        retrieval, configured_settings().model_copy(update={"agent_timeout_seconds": 0.01}), []
+    )
+
+    async def scenario():
+        result = await agent.answer(
+            knowledge_base_id="kb", message="original", top_k=3, mode="auto"
+        )
+        assert result.detail == "timeout" and result.evidence == []
+        trace = result.trace
+        await asyncio.sleep(0.1)
+        assert result.evidence == [] and result.trace == trace
+
+    asyncio.run(scenario())

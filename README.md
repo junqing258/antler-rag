@@ -223,3 +223,7 @@ curl -X POST http://localhost:6050/api/v1/retrieve \
 ## 许可证
 
 当前仓库尚未声明许可证；在对外发布或分发前请补充明确的 `LICENSE` 文件。
+
+### LlamaIndex 索引内核
+
+RAG 入库、检索与模型调用现使用显式注入的 LlamaIndex 适配器。现有索引需在停机备份后转换到独立的 `-li-v1` collection；存在旧数据时应用不会直接启动空的新索引。转换命令、Agent 预算、评估和回滚步骤见 [LlamaIndex 运维说明](docs/llamaindex-operations.md)。

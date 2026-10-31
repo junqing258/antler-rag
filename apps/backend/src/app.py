@@ -17,10 +17,10 @@ from fastapi.staticfiles import StaticFiles
 
 from core.config import Settings
 from db import Database
-from rag import RAGStore, RetrievalService
-from rag.agentic import AgentService
+from rag import RAGStore
 from rag.graph_build import GraphBuildService
 from rag.graph_store import GraphStore
+from rag.runtime import RAGRuntime
 from routers import ALL_ROUTERS
 from services.errors import APIError
 from utils.logging import configure_logging
@@ -38,9 +38,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         database.initialize()
         app.state.settings = settings
         app.state.db = database
-        app.state.store = RAGStore(settings)
-        app.state.retrieval = RetrievalService.from_store(app.state.store)
-        app.state.agentic = AgentService(app.state.retrieval, settings)
+        runtime = RAGRuntime.create(settings, RAGStore)
+        app.state.store = runtime.store
+        app.state.retrieval = runtime.retrieval
+        app.state.agentic = runtime.agent
         app.state.graph_store = GraphStore(database)
         app.state.graph_build = GraphBuildService(
             database, app.state.store, app.state.graph_store, settings
@@ -48,7 +49,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
-            app.state.store.close()
+            runtime.close()
 
     app = FastAPI(title="Antler RAG Admin API", version="0.2.0", lifespan=lifespan)
 

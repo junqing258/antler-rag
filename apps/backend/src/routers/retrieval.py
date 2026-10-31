@@ -8,7 +8,9 @@ from core.config import Settings
 from db import Database
 from models.schemas import ChatRequest, Principal, RetrievalOptions, RetrieveRequest
 from rag import RetrievalService
+from rag.execution import run_sync
 from rag.store import RerankerError
+from rag.synthesis import context_evidence
 from routers.dependencies import access, get_database, get_retrieval, get_settings
 from services.chat import generate_answer
 from services.errors import APIError
@@ -60,7 +62,8 @@ async def chat(
 ) -> dict[str, Any]:
     validate_retrieve(payload, database)
     try:
-        chunks = service.retrieve(
+        chunks = await run_sync(
+            service.retrieve,
             knowledge_base_id=payload.knowledge_base_id,
             query=payload.message,
             top_k=payload.top_k,
@@ -81,6 +84,12 @@ async def chat(
         payload.system_prompt
         or "Answer only from the provided sources. If they do not answer the question, say so and cite source numbers."
     )
+    chunks = context_evidence(
+        chunks, question=payload.message, prompt=prompt, budget=settings.answer_context_characters
+    )
+    sources = [chunk_payload(chunk) for chunk in chunks]
+    if not chunks:
+        return {"answer": None, "sources": sources, "detail": "No relevant evidence was found."}
     answer = await generate_answer(
         settings=settings,
         prompt=prompt,

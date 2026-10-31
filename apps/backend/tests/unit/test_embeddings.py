@@ -27,7 +27,7 @@ def test_openai_compatible_embedding_function_orders_vectors_by_index() -> None:
         base_url="https://example.test/v1/",
         api_key="test-key",
         model="text-embedding-v4",
-        dimensions=1024,
+        dimensions=2,
         client=httpx.Client(transport=httpx.MockTransport(handler)),
     )
 
@@ -40,7 +40,7 @@ def test_openai_compatible_embedding_function_orders_vectors_by_index() -> None:
         "payload": {
             "model": "text-embedding-v4",
             "input": ["first", "second"],
-            "dimensions": 1024,
+            "dimensions": 2,
         },
     }
 
@@ -97,6 +97,11 @@ def test_index_drafts_writes_current_strategy_metadata_without_changing_content(
 
     store = object.__new__(RAGStore)
     store.collection = Collection()
+    from rag.embeddings import ProviderEmbedding
+    from rag.vector_store import DistanceChromaStore
+
+    store.embed_model = ProviderEmbedding(lambda texts: [[1.0, 0.0] for _ in texts])
+    store.vector_store = DistanceChromaStore(chroma_collection=store.collection)
     for strategy, drafts in (
         ("recursive", chunk_recursive("# Heading\n\nBody", chunk_size=100, chunk_overlap=20)),
         (

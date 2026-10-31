@@ -6,6 +6,8 @@ from typing import Any
 import httpx
 
 from core.config import Settings
+from rag.llm import CompatibleLLM, completion
+from rag.synthesis import answer_messages
 from services.errors import APIError
 
 
@@ -19,32 +21,12 @@ async def generate_answer(
     logger: Any,
 ) -> str:
     """Call the configured OpenAI-compatible chat service for retrieved context."""
-    source_text = "\n\n".join(
-        f"[Source {index}: {chunk.filename}]\n{chunk.content}"
-        for index, chunk in enumerate(chunks, 1)
-    )
-    headers = {"Authorization": f"Bearer {settings.llm_api_key}"} if settings.llm_api_key else {}
     started = perf_counter()
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(60, connect=10)) as client:
-            response = await client.post(
-                f"{settings.llm_base_url.rstrip('/')}/chat/completions",
-                json={
-                    "model": settings.chat_model,
-                    "messages": [
-                        {"role": "system", "content": prompt},
-                        {
-                            "role": "user",
-                            "content": f"Sources:\n{source_text}\n\nQuestion: {question}",
-                        },
-                    ],
-                    "temperature": 0,
-                },
-                headers=headers,
-            )
-            response.raise_for_status()
-            answer = response.json()["choices"][0]["message"]["content"]
-    except (httpx.HTTPError, KeyError, TypeError, IndexError) as error:
+        answer = await completion(
+            CompatibleLLM(settings), answer_messages(prompt, question, chunks)
+        )
+    except (httpx.HTTPError, KeyError, TypeError, IndexError, ValueError) as error:
         status_code = (
             error.response.status_code if isinstance(error, httpx.HTTPStatusError) else None
         )

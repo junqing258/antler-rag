@@ -1,93 +1,16 @@
-"""Retrieval orchestration with a stable, source-neutral evidence model.
+"""检索编排，使用稳定且与来源无关的证据模型。
 
-The vector store remains the only enabled retriever for now.  Keeping its adapter
-behind this small service lets keyword and graph retrieval be added later without
-changing the HTTP contracts.
+目前向量存储仍是唯一启用的检索器。把它的适配器放在这个
+小型服务之后，便于将来加入关键词与图谱检索，而无需改动 HTTP 契约。
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from time import perf_counter
-from typing import Literal, Protocol
+from typing import Protocol
 
-from .chunking import ChunkMetadata
-from .store import RAGStore, RetrievedChunk
-
-
-@dataclass(frozen=True)
-class Evidence(ChunkMetadata):
-    """A retriever result with a stable ID and enough provenance to cite it."""
-
-    evidence_id: str
-    knowledge_base_id: str
-    document_id: str
-    chunk_id: str
-    chunk_index: int
-    filename: str
-    content: str
-    source_type: Literal["vector", "keyword", "graph"]
-    score: float | None
-    distance: float | None = None
-    rerank_score: float | None = None
-    graph_path: tuple[str, ...] | None = None
-
-    @classmethod
-    def from_vector(cls, chunk: RetrievedChunk) -> Evidence:
-        return cls(
-            evidence_id=f"vector:{chunk.chunk_id}",
-            knowledge_base_id=chunk.knowledge_base_id,
-            document_id=chunk.document_id,
-            chunk_id=chunk.chunk_id,
-            chunk_index=chunk.chunk_index,
-            filename=chunk.filename,
-            content=chunk.content,
-            source_type="vector",
-            score=chunk.rerank_score
-            if chunk.rerank_score is not None
-            else RAGStore.similarity_score(chunk.distance),
-            distance=chunk.distance,
-            rerank_score=chunk.rerank_score,
-            **chunk.structure_payload(),
-        )
-
-
-@dataclass(frozen=True)
-class RetrievalFilters:
-    knowledge_base_id: str
-    top_k: int
-    document_ids: tuple[str, ...] = ()
-    score_threshold: float | None = None
-    rerank: bool = False
-
-    @classmethod
-    def create(
-        cls,
-        *,
-        knowledge_base_id: str,
-        top_k: int,
-        document_ids: list[str] | None = None,
-        score_threshold: float | None = None,
-        rerank: bool = False,
-    ) -> RetrievalFilters:
-        # The route performs existence and KB-ownership checks.  De-duplicating
-        # here makes downstream retrievers deterministic without widening scope.
-        return cls(
-            knowledge_base_id=knowledge_base_id,
-            top_k=top_k,
-            document_ids=tuple(dict.fromkeys(document_ids or [])),
-            score_threshold=score_threshold,
-            rerank=rerank,
-        )
-
-
-@dataclass(frozen=True)
-class RetrievalTrace:
-    mode: str
-    retrievers: tuple[str, ...]
-    candidate_count: int
-    result_count: int
-    duration_ms: int
+from .contracts import Evidence, RetrievalFilters, RetrievalTrace
+from .store import RAGStore
 
 
 class Retriever(Protocol):
@@ -115,7 +38,7 @@ class VectorRetriever:
 
 
 class RetrievalService:
-    """Coordinates enabled retrievers while using vector-only semantics."""
+    """协调已启用的检索器，当前语义仅为向量检索。"""
 
     def __init__(self, vector_retriever: Retriever):
         self.vector_retriever = vector_retriever
@@ -129,7 +52,7 @@ class RetrievalService:
     ) -> tuple[list[Evidence], RetrievalTrace]:
         started = perf_counter()
         candidates = self.vector_retriever.retrieve(query=query, filters=filters)
-        # A future hybrid merger uses the same rule: one item per provenance chunk.
+        # 将来的混合合并器沿用同一规则：每个溯源 chunk 只保留一条。
         evidence = self._deduplicate(candidates)[: filters.top_k]
         trace = RetrievalTrace(
             mode="vector",

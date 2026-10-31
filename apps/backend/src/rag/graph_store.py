@@ -1,4 +1,4 @@
-"""SQLite persistence boundary for graph provenance and lifecycle state."""
+"""图谱溯源与生命周期状态的 SQLite 持久化边界。"""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ class GraphStore:
     def mark_not_built(
         self, *, knowledge_base_id: str, document_id: str, source_sha256: str
     ) -> None:
-        """Record an indexed document as eligible for an admin-only graph rebuild."""
+        """将已索引的文档记录为可由管理员触发的图谱重建。"""
         with self.database.connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
@@ -33,7 +33,7 @@ class GraphStore:
         self, conn: sqlite3.Connection, *, knowledge_base_id: str,
         document_id: str, source_sha256: str,
     ) -> None:
-        """Use the caller's transaction; never acquire or commit a second connection."""
+        """复用调用方的事务；绝不另开连接或自行提交。"""
         ready = conn.execute(
             "SELECT 1 FROM documents WHERE id=? AND knowledge_base_id=? AND status='ready' AND sha256=?",
             (document_id, knowledge_base_id, source_sha256),
@@ -169,7 +169,7 @@ class GraphStore:
         extractor_version: str,
         facts: list[dict[str, object]],
     ) -> None:
-        """Atomically replace one document's provenance with validated extractor facts."""
+        """原子地把一个文档的溯源替换为校验过的抽取事实。"""
         with self.database.connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
@@ -301,7 +301,7 @@ class GraphStore:
     def _cleanup_provenance(
         conn: object, knowledge_base_id: str, document_id: str, *, remove_state: bool
     ) -> None:
-        # sqlite.Connection deliberately stays structural here to keep the transaction private.
+        # 这里刻意让 sqlite.Connection 保持结构化类型，以便事务保持私有。
         conn.execute(
             "DELETE FROM relation_mentions WHERE knowledge_base_id=? AND document_id=?",
             (knowledge_base_id, document_id),
@@ -363,7 +363,7 @@ class GraphStore:
         )
 
     def cleanup_document(self, *, knowledge_base_id: str, document_id: str) -> None:
-        """Remove one document's provenance, then only facts with no provenance."""
+        """移除一个文档的溯源，随后只删除已无任何溯源引用的事实。"""
         with self.database.connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:

@@ -12,8 +12,9 @@ from loguru import logger
 from core.config import Settings
 from db import Database
 from rag.chunking import ChunkDraft, chunk_recursive, chunk_structure
+from rag.contracts import IndexStore
 from rag.graph_store import GraphStore
-from rag.store import RAGStore, upload_path
+from rag.store import upload_path
 from utils.documents import extract_text, parse_document
 
 
@@ -46,7 +47,9 @@ def prepare_source(
 
 
 class DocumentIndexingService:
-    def __init__(self, database: Database, store: RAGStore, graph: GraphStore, settings: Settings):
+    def __init__(
+        self, database: Database, store: IndexStore, graph: GraphStore, settings: Settings
+    ):
         self.database, self.store, self.graph, self.settings = database, store, graph, settings
 
     def upload(
